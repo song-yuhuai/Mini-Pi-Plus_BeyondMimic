@@ -140,16 +140,8 @@ This structure is designed to ensure modularity and ease of navigation for devel
 
 
 
-
 # Mini Pi Plus based on BeyondMimic （Chinese Translation）
 
-[![IsaacSim](https://img.shields.io/badge/IsaacSim-5.0.0-silver.svg)](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/installation/download.html)
-[![Isaac Lab](https://img.shields.io/badge/IsaacLab-2.2.0-silver)](https://isaac-sim.github.io/IsaacLab/v2.2.0/index.html)
-[![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://docs.python.org/3/whatsnew/3.11.html)
-[![Linux platform](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://releases.ubuntu.com/20.04/)
-[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
-[![License](https://img.shields.io/badge/license-MIT-yellow.svg)](https://opensource.org/license/mit)
-![gif](https://github.com/Daily-study-HT/bydmimic_publish/blob/main/gif/6363667a0f27da450e1059a30c2b274b.gif)
 ## 介绍
 
 此项目是基于 [Beyondmimic](https://github.com/HybridRobotics/whole_body_tracking) 进行修改建立的。原项目是由作者qiayuanl提出的一个多功能的人形机器人控制框架，它能够在实际部署中提供高度动态的运动跟踪和最先进的运动质量，并通过基于引导扩散的控制器提供可控的测试时间控制。
