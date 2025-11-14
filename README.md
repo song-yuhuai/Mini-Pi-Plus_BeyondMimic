@@ -134,7 +134,7 @@ The following is an overview of the project's code structure:
 
 This structure is designed to ensure modularity and ease of navigation for developers extending the project.
 
-## Original Project Repository
+#### Original Project Repository
 [whole_body_tracking](https://github.com/HybridRobotics/whole_body_tracking)
 
 
