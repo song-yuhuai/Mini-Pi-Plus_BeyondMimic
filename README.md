@@ -137,9 +137,11 @@ This structure is designed to ensure modularity and ease of navigation for devel
 ## Original Project Repository
 [whole_body_tracking](https://github.com/HybridRobotics/whole_body_tracking)
 
-要不要我帮你检查一遍**英文README的格式一致性**，确保所有链接、代码块和徽章都能正常显示？
 
-# Mini Pi Plus based on BeyondMimic 
+
+
+
+# Mini Pi Plus based on BeyondMimic （Chinese Translation）
 
 [![IsaacSim](https://img.shields.io/badge/IsaacSim-5.0.0-silver.svg)](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/installation/download.html)
 [![Isaac Lab](https://img.shields.io/badge/IsaacLab-2.2.0-silver)](https://isaac-sim.github.io/IsaacLab/v2.2.0/index.html)
