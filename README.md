@@ -140,7 +140,7 @@ This structure is designed to ensure modularity and ease of navigation for devel
 
 
 
-# Mini Pi Plus based on BeyondMimic （Chinese Translation）
+# Mini Pi Plus based on BeyondMimic （中文翻译）
 
 ## 介绍
 
