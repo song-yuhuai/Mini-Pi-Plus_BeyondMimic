@@ -213,6 +213,14 @@ python scripts/replay_npz.py --robot pi_plus --motion_file source/motion/hightor
 python scripts/rsl_rl/train.py --task=Tracking-Flat-PI-Plus-Wo-v0 --motion_file source/motion/hightorque/pi_plus/npz/{motion_name}.npz --headless --log_project_name pi_plus_beyondmimic
 #若不想使用wandb，可以去掉 --logger wandb
 #继续训练 --resume {load_run_name}
+
+# 其他可用参数：
+```
+--save_interval=10 
+--experiment_name={experiment_name}
+--log_dir_path={log_dir_path}
+如果提供了--experiment_name和--run_name, log保存路径会是：logs/rsl_rl/{agent_cfg.experiment_name}/{"%Y-%m-%d_%H-%M-%S"}_{run_name}
+如果提供了--log_dir_path就会保存在log_dir_path下
 ```
 ### 模型导出
 
