@@ -215,7 +215,6 @@ python scripts/rsl_rl/train.py --task=Tracking-Flat-PI-Plus-Wo-v0 --motion_file 
 #继续训练 --resume {load_run_name}
 
 # 其他可用参数：
-```
 --save_interval=10 
 --experiment_name={experiment_name}
 --log_dir_path={log_dir_path}
