@@ -17,6 +17,10 @@
     # For PI Plus robot:
     python csv_to_npz.py --robot pi_plus --input_file source/motion/hightorque/pi_plus/csv/dance1_subject2.csv --input_fps 30 \
     --frame_range 174 424 --output_name source/motion/hightorque/pi_plus/npz/dance1_subject2 --output_fps 50
+
+    # For PI Plus Waist Shell robot:
+    python csv_to_npz.py --robot pi_plus_waist_shell --input_file source/motion/hightorque/pi_plus_waist_shell/csv/dance1_subject2.csv --input_fps 30 \
+    --frame_range 174 424 --output_name source/motion/hightorque/pi_plus_waist_shell/npz/dance1_subject2 --output_fps 50
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -43,8 +47,8 @@ parser.add_argument(
 )
 parser.add_argument("--output_name", type=str, required=True, help="The name of the motion npz file.")
 parser.add_argument("--output_fps", type=int, default=50, help="The fps of the output motion.")
-parser.add_argument("--robot", type=str, choices=["g1", "hi", "pi_plus"], required=True, 
-                   help="Robot type: g1 (Unitree G1), hi (Unitree Hi), pi_plus (PI Plus)")
+parser.add_argument("--robot", type=str, choices=["g1", "hi", "pi_plus","pi_plus_waist_shell","pi_plus_head"], required=True, 
+                   help="Robot type: g1 (Unitree G1), hi (Unitree Hi), pi_plus (PI Plus),pi_plus_head")
 parser.add_argument("--no_wandb", action="store_true", help="Skip WandB upload and save NPZ locally only.")
 parser.add_argument("--save_to", type=str, default="/tmp/", help="Path to save the generated npz.")
 
@@ -75,6 +79,10 @@ from isaaclab.utils.math import axis_angle_from_quat, quat_conjugate, quat_mul, 
 from whole_body_tracking.robots.g1 import G1_CYLINDER_CFG
 from whole_body_tracking.robots.hi import HI_CFG
 from whole_body_tracking.robots.pi_plus import PI_PLUS_CFG
+from whole_body_tracking.robots.pi_plus80_waist_shell import PI_PLUS80_WAIST_shell_CFG
+#from whole_body_tracking.robots.pi_plus_head import PI_PLUS_HEAD4438_CFG as PI_PLUS_HEAD_CFG
+
+
 
 # Robot configurations
 ROBOT_CONFIGS = {
@@ -172,7 +180,68 @@ ROBOT_CONFIGS = {
             "r_elbow_joint",
             "r_wrist_joint",
         ]
-    }
+    },
+    "pi_plus_head": {
+        "cfg": PI_PLUS80_WAIST_shell_CFG,
+        "has_header": True,
+        "dof_slice": None,  # Use all DOFs
+        "joint_names": [
+            "l_hip_pitch_joint",
+            "l_hip_roll_joint",
+            "l_thigh_joint",
+            "l_calf_joint",
+            "l_ankle_pitch_joint",
+            "l_ankle_roll_joint",
+            "r_hip_pitch_joint",
+            "r_hip_roll_joint",
+            "r_thigh_joint",
+            "r_calf_joint",
+            "r_ankle_pitch_joint",
+            "r_ankle_roll_joint",
+            "l_shoulder_pitch_joint",
+            "l_shoulder_roll_joint",
+            "l_upper_arm_joint",
+            "l_elbow_joint",
+            "l_wrist_joint",
+            "r_shoulder_pitch_joint",
+            "r_shoulder_roll_joint",
+            "r_upper_arm_joint",
+            "r_elbow_joint",
+            "r_wrist_joint",
+            "head_yaw_joint",
+            "head_pitch_joint",
+        ]
+    },
+    "pi_plus_waist_shell": {
+        "cfg": PI_PLUS80_WAIST_shell_CFG,
+        "has_header": True,
+        "dof_slice": None,  # Use all DOFs
+        "joint_names": [
+            "l_hip_pitch_joint",
+            "l_hip_roll_joint",
+            "l_thigh_joint",
+            "l_calf_joint",
+            "l_ankle_pitch_joint",
+            "l_ankle_roll_joint",
+            "r_hip_pitch_joint",
+            "r_hip_roll_joint",
+            "r_thigh_joint",
+            "r_calf_joint",
+            "r_ankle_pitch_joint",
+            "r_ankle_roll_joint",
+            "waist_yaw_joint",
+            "l_shoulder_pitch_joint",
+            "l_shoulder_roll_joint",
+            "l_upper_arm_joint",
+            "l_elbow_joint",
+            "l_wrist_joint",
+            "r_shoulder_pitch_joint",
+            "r_shoulder_roll_joint",
+            "r_upper_arm_joint",
+            "r_elbow_joint",
+            "r_wrist_joint",
+        ]
+    },
 }
 
 
@@ -461,6 +530,9 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene, rob
                 print(f"[INFO]: Motion saved to wandb registry: {REGISTRY}/{COLLECTION}")
             else:
                 print("[INFO]: Skipped WandB upload (--no_wandb flag used)")
+            # Set flag to exit loop
+            print("[INFO]: File saved, breaking loop...")
+            break  # Immediately break out of the loop
 
 
 def main():
@@ -493,4 +565,5 @@ if __name__ == "__main__":
     # run the main function
     main()
     # close sim app
-    simulation_app.close()
+    print("[INFO]: Exiting program...")
+    exit(0)
