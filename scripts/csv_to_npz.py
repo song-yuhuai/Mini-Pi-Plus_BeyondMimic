@@ -79,7 +79,7 @@ from isaaclab.utils.math import axis_angle_from_quat, quat_conjugate, quat_mul, 
 from whole_body_tracking.robots.g1 import G1_CYLINDER_CFG
 from whole_body_tracking.robots.hi import HI_CFG
 from whole_body_tracking.robots.pi_plus import PI_PLUS_CFG
-from whole_body_tracking.robots.pi_plus80_waist_shell import PI_PLUS80_WAIST_shell_CFG
+#from whole_body_tracking.robots.pi_plus80_waist_shell import PI_PLUS80_WAIST_shell_CFG
 #from whole_body_tracking.robots.pi_plus_head import PI_PLUS_HEAD4438_CFG as PI_PLUS_HEAD_CFG
 
 
@@ -181,67 +181,67 @@ ROBOT_CONFIGS = {
             "r_wrist_joint",
         ]
     },
-    "pi_plus_head": {
-        "cfg": PI_PLUS80_WAIST_shell_CFG,
-        "has_header": True,
-        "dof_slice": None,  # Use all DOFs
-        "joint_names": [
-            "l_hip_pitch_joint",
-            "l_hip_roll_joint",
-            "l_thigh_joint",
-            "l_calf_joint",
-            "l_ankle_pitch_joint",
-            "l_ankle_roll_joint",
-            "r_hip_pitch_joint",
-            "r_hip_roll_joint",
-            "r_thigh_joint",
-            "r_calf_joint",
-            "r_ankle_pitch_joint",
-            "r_ankle_roll_joint",
-            "l_shoulder_pitch_joint",
-            "l_shoulder_roll_joint",
-            "l_upper_arm_joint",
-            "l_elbow_joint",
-            "l_wrist_joint",
-            "r_shoulder_pitch_joint",
-            "r_shoulder_roll_joint",
-            "r_upper_arm_joint",
-            "r_elbow_joint",
-            "r_wrist_joint",
-            "head_yaw_joint",
-            "head_pitch_joint",
-        ]
-    },
-    "pi_plus_waist_shell": {
-        "cfg": PI_PLUS80_WAIST_shell_CFG,
-        "has_header": True,
-        "dof_slice": None,  # Use all DOFs
-        "joint_names": [
-            "l_hip_pitch_joint",
-            "l_hip_roll_joint",
-            "l_thigh_joint",
-            "l_calf_joint",
-            "l_ankle_pitch_joint",
-            "l_ankle_roll_joint",
-            "r_hip_pitch_joint",
-            "r_hip_roll_joint",
-            "r_thigh_joint",
-            "r_calf_joint",
-            "r_ankle_pitch_joint",
-            "r_ankle_roll_joint",
-            "waist_yaw_joint",
-            "l_shoulder_pitch_joint",
-            "l_shoulder_roll_joint",
-            "l_upper_arm_joint",
-            "l_elbow_joint",
-            "l_wrist_joint",
-            "r_shoulder_pitch_joint",
-            "r_shoulder_roll_joint",
-            "r_upper_arm_joint",
-            "r_elbow_joint",
-            "r_wrist_joint",
-        ]
-    },
+    # "pi_plus_head": {
+    #     "cfg": PI_PLUS80_WAIST_shell_CFG,
+    #     "has_header": True,
+    #     "dof_slice": None,  # Use all DOFs
+    #     "joint_names": [
+    #         "l_hip_pitch_joint",
+    #         "l_hip_roll_joint",
+    #         "l_thigh_joint",
+    #         "l_calf_joint",
+    #         "l_ankle_pitch_joint",
+    #         "l_ankle_roll_joint",
+    #         "r_hip_pitch_joint",
+    #         "r_hip_roll_joint",
+    #         "r_thigh_joint",
+    #         "r_calf_joint",
+    #         "r_ankle_pitch_joint",
+    #         "r_ankle_roll_joint",
+    #         "l_shoulder_pitch_joint",
+    #         "l_shoulder_roll_joint",
+    #         "l_upper_arm_joint",
+    #         "l_elbow_joint",
+    #         "l_wrist_joint",
+    #         "r_shoulder_pitch_joint",
+    #         "r_shoulder_roll_joint",
+    #         "r_upper_arm_joint",
+    #         "r_elbow_joint",
+    #         "r_wrist_joint",
+    #         "head_yaw_joint",
+    #         "head_pitch_joint",
+    #     ]
+    # },
+    # "pi_plus_waist_shell": {
+    #     "cfg": PI_PLUS80_WAIST_shell_CFG,
+    #     "has_header": True,
+    #     "dof_slice": None,  # Use all DOFs
+    #     "joint_names": [
+    #         "l_hip_pitch_joint",
+    #         "l_hip_roll_joint",
+    #         "l_thigh_joint",
+    #         "l_calf_joint",
+    #         "l_ankle_pitch_joint",
+    #         "l_ankle_roll_joint",
+    #         "r_hip_pitch_joint",
+    #         "r_hip_roll_joint",
+    #         "r_thigh_joint",
+    #         "r_calf_joint",
+    #         "r_ankle_pitch_joint",
+    #         "r_ankle_roll_joint",
+    #         "waist_yaw_joint",
+    #         "l_shoulder_pitch_joint",
+    #         "l_shoulder_roll_joint",
+    #         "l_upper_arm_joint",
+    #         "l_elbow_joint",
+    #         "l_wrist_joint",
+    #         "r_shoulder_pitch_joint",
+    #         "r_shoulder_roll_joint",
+    #         "r_upper_arm_joint",
+    #         "r_elbow_joint",
+    #         "r_wrist_joint",
+    #     ]
+    # },
 }
 
 
