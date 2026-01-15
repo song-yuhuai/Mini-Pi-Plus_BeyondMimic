@@ -76,7 +76,7 @@ from isaaclab.utils.math import axis_angle_from_quat, quat_conjugate, quat_mul, 
 ##
 # Pre-defined configs
 ##
-from whole_body_tracking.robots.g1 import G1_CYLINDER_CFG
+#from whole_body_tracking.robots.g1 import G1_CYLINDER_CFG
 from whole_body_tracking.robots.hi import HI_CFG
 from whole_body_tracking.robots.pi_plus import PI_PLUS_CFG
 #from whole_body_tracking.robots.pi_plus80_waist_shell import PI_PLUS80_WAIST_shell_CFG
@@ -86,42 +86,42 @@ from whole_body_tracking.robots.pi_plus import PI_PLUS_CFG
 
 # Robot configurations
 ROBOT_CONFIGS = {
-    "g1": {
-        "cfg": G1_CYLINDER_CFG,
-        "has_header": False,
-        "dof_slice": None,  # Use all DOFs
-        "joint_names": [
-            "left_hip_pitch_joint",
-            "left_hip_roll_joint",
-            "left_hip_yaw_joint",
-            "left_knee_joint",
-            "left_ankle_pitch_joint",
-            "left_ankle_roll_joint",
-            "right_hip_pitch_joint",
-            "right_hip_roll_joint",
-            "right_hip_yaw_joint",
-            "right_knee_joint",
-            "right_ankle_pitch_joint",
-            "right_ankle_roll_joint",
-            "waist_yaw_joint",
-            "waist_roll_joint",
-            "waist_pitch_joint",
-            "left_shoulder_pitch_joint",
-            "left_shoulder_roll_joint",
-            "left_shoulder_yaw_joint",
-            "left_elbow_joint",
-            "left_wrist_roll_joint",
-            "left_wrist_pitch_joint",
-            "left_wrist_yaw_joint",
-            "right_shoulder_pitch_joint",
-            "right_shoulder_roll_joint",
-            "right_shoulder_yaw_joint",
-            "right_elbow_joint",
-            "right_wrist_roll_joint",
-            "right_wrist_pitch_joint",
-            "right_wrist_yaw_joint",
-        ]
-    },
+    # "g1": {
+    #     "cfg": G1_CYLINDER_CFG,
+    #     "has_header": False,
+    #     "dof_slice": None,  # Use all DOFs
+    #     "joint_names": [
+    #         "left_hip_pitch_joint",
+    #         "left_hip_roll_joint",
+    #         "left_hip_yaw_joint",
+    #         "left_knee_joint",
+    #         "left_ankle_pitch_joint",
+    #         "left_ankle_roll_joint",
+    #         "right_hip_pitch_joint",
+    #         "right_hip_roll_joint",
+    #         "right_hip_yaw_joint",
+    #         "right_knee_joint",
+    #         "right_ankle_pitch_joint",
+    #         "right_ankle_roll_joint",
+    #         "waist_yaw_joint",
+    #         "waist_roll_joint",
+    #         "waist_pitch_joint",
+    #         "left_shoulder_pitch_joint",
+    #         "left_shoulder_roll_joint",
+    #         "left_shoulder_yaw_joint",
+    #         "left_elbow_joint",
+    #         "left_wrist_roll_joint",
+    #         "left_wrist_pitch_joint",
+    #         "left_wrist_yaw_joint",
+    #         "right_shoulder_pitch_joint",
+    #         "right_shoulder_roll_joint",
+    #         "right_shoulder_yaw_joint",
+    #         "right_elbow_joint",
+    #         "right_wrist_roll_joint",
+    #         "right_wrist_pitch_joint",
+    #         "right_wrist_yaw_joint",
+    #     ]
+    # },
     "hi": {
         "cfg": HI_CFG,
         "has_header": True,
