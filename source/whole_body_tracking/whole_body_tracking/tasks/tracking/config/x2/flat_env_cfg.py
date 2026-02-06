@@ -45,7 +45,7 @@ class X2FlatEnvCfg(TrackingEnvCfg):
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
             "contact_forces",
             body_names=[
-                r"^(?!l_ankle_roll_link$)(?!r_ankle_roll_link$)(?!l_wrist_link$)(?!r_wrist_link$).+$"
+                r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_elbow_link$)(?!right_elbow_link$).+$"
             ],
         )
 
