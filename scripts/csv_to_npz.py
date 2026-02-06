@@ -18,6 +18,10 @@
     python csv_to_npz.py --robot pi_plus --input_file source/motion/hightorque/pi_plus/csv/dance1_subject2.csv --input_fps 30 \
     --frame_range 174 424 --output_name source/motion/hightorque/pi_plus/npz/dance1_subject2 --output_fps 50
 
+    # For X2 robot:
+    python csv_to_npz.py --robot x2 --input_file source/motion/hightorque/x2/csv/dance1_subject2.csv --input_fps 30 \
+    --frame_range 174 424 --output_name source/motion/hightorque/x2/npz/dance1_subject2 --output_fps 50
+
     # For PI Plus Waist Shell robot:
     python csv_to_npz.py --robot pi_plus_waist_shell --input_file source/motion/hightorque/pi_plus_waist_shell/csv/dance1_subject2.csv --input_fps 30 \
     --frame_range 174 424 --output_name source/motion/hightorque/pi_plus_waist_shell/npz/dance1_subject2 --output_fps 50
@@ -47,8 +51,13 @@ parser.add_argument(
 )
 parser.add_argument("--output_name", type=str, required=True, help="The name of the motion npz file.")
 parser.add_argument("--output_fps", type=int, default=50, help="The fps of the output motion.")
-parser.add_argument("--robot", type=str, choices=["g1", "hi", "pi_plus","pi_plus_waist_shell","pi_plus_head"], required=True, 
-                   help="Robot type: g1 (Unitree G1), hi (Unitree Hi), pi_plus (PI Plus),pi_plus_head")
+parser.add_argument(
+    "--robot",
+    type=str,
+    choices=["g1", "hi", "pi_plus", "x2", "pi_plus_waist_shell", "pi_plus_head"],
+    required=True,
+    help="Robot type: g1 (Unitree G1), hi (Unitree Hi), pi_plus (PI Plus), x2 (X2), pi_plus_head",
+)
 parser.add_argument("--no_wandb", action="store_true", help="Skip WandB upload and save NPZ locally only.")
 parser.add_argument("--save_to", type=str, default="/tmp/", help="Path to save the generated npz.")
 
@@ -79,6 +88,7 @@ from isaaclab.utils.math import axis_angle_from_quat, quat_conjugate, quat_mul, 
 #from whole_body_tracking.robots.g1 import G1_CYLINDER_CFG
 from whole_body_tracking.robots.hi import HI_CFG
 from whole_body_tracking.robots.pi_plus import PI_PLUS_CFG
+from whole_body_tracking.robots.x2 import X2_CFG, X2_JOINT_NAMES
 #from whole_body_tracking.robots.pi_plus80_waist_shell import PI_PLUS80_WAIST_shell_CFG
 #from whole_body_tracking.robots.pi_plus_head import PI_PLUS_HEAD4438_CFG as PI_PLUS_HEAD_CFG
 
@@ -180,6 +190,12 @@ ROBOT_CONFIGS = {
             "r_elbow_joint",
             "r_wrist_joint",
         ]
+    },
+    "x2": {
+        "cfg": X2_CFG,
+        "has_header": True,
+        "dof_slice": None,  # Use all DOFs
+        "joint_names": X2_JOINT_NAMES,
     },
     # "pi_plus_head": {
     #     "cfg": PI_PLUS80_WAIST_shell_CFG,

@@ -9,6 +9,9 @@
     # For PI Plus robot with local file:
     python scripts/replay_npz.py --robot pi_plus --motion_file source/motion/hightorque/pi_plus/npz/pi_plus_dance1_subject2.npz
 """
+# For X2 robot with local file:
+    # python scripts/replay_npz.py --robot x2 --motion_file source/motion/hightorque/x2/npz/x2_dance1_subject2.npz
+
 
 """Launch Isaac Sim Simulator first."""
 
@@ -20,8 +23,13 @@ from isaaclab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Replay converted motions.")
-parser.add_argument("--robot", type=str, choices=["hi", "pi_plus"], required=True,
-                   help="Robot type: hi (Hi), pi_plus (PI Plus)")
+parser.add_argument(
+    "--robot",
+    type=str,
+    choices=["hi", "pi_plus", "x2"],
+    required=True,
+    help="Robot type: hi (Hi), pi_plus (PI Plus), x2 (X2)",
+)
 parser.add_argument("--registry_name", type=str, help="The name of the wand registry.")
 parser.add_argument("--motion_file", type=str, help="Local motion NPZ file path")
 
@@ -48,6 +56,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 ##
 from whole_body_tracking.robots.hi import HI_CFG
 from whole_body_tracking.robots.pi_plus import PI_PLUS_CFG
+from whole_body_tracking.robots.x2 import X2_CFG
 from whole_body_tracking.tasks.tracking.mdp import MotionLoader
 
 # Robot configurations
@@ -59,6 +68,10 @@ ROBOT_CONFIGS = {
     "pi_plus": {
         "cfg": PI_PLUS_CFG,
         "name": "PI Plus"
+    },
+    "x2": {
+        "cfg": X2_CFG,
+        "name": "X2"
     }
 }
 
