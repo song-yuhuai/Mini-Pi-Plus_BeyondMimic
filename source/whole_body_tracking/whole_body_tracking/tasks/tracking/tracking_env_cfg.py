@@ -49,6 +49,11 @@ VELOCITY_RANGE = {
     "yaw": (-0.78, 0.78),  # 偏航角速度(约45度/秒)
 }
 
+# 训练场景中的底盘箱体参数
+CHASSIS_SIZE = (1.0, 1.0, 0.16)
+CHASSIS_OFFSET_X = 1.0
+CHASSIS_OFFSET_Y = 0.3
+
 
 @configclass
 class MySceneCfg(InteractiveSceneCfg):
@@ -92,6 +97,25 @@ class MySceneCfg(InteractiveSceneCfg):
         ),
     )
     
+    # 底盘箱体（用于踏步接触）
+    chassis_box = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/ChassisBox",
+        spawn=sim_utils.CuboidCfg(
+            # CuboidCfg.size uses full dimensions.
+            size=CHASSIS_SIZE,
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=1.0,
+                dynamic_friction=1.0,
+                restitution=0.0,
+            ),
+        ),
+        init_state=AssetBaseCfg.InitialStateCfg(
+            pos=(CHASSIS_OFFSET_X, CHASSIS_OFFSET_Y, CHASSIS_SIZE[2] / 2.0)
+        ),
+    )
+
     # 接触力传感器配置
     contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*", # 监测机器人所有部件的接触
