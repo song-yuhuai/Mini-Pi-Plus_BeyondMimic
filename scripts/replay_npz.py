@@ -59,6 +59,11 @@ from whole_body_tracking.robots.pi_plus import PI_PLUS_CFG
 from whole_body_tracking.robots.x2 import X2_CFG
 from whole_body_tracking.tasks.tracking.mdp import MotionLoader
 
+# Chassis box settings (size is full dimensions in meters).
+CHASSIS_SIZE = (1.0, 1.0, 0.16)
+CHASSIS_OFFSET_X = 1.0
+CHASSIS_OFFSET_Y = 0.3
+
 # Robot configurations
 ROBOT_CONFIGS = {
     "hi": {
@@ -88,6 +93,17 @@ class ReplayMotionsSceneCfg(InteractiveSceneCfg):
             intensity=750.0,
             texture_file=f"{ISAAC_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
         ),
+    )
+
+    chassis_box = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/ChassisBox",
+        spawn=sim_utils.CuboidCfg(
+            # IsaacLab CuboidCfg.size uses full dimensions, not half-extents.
+            size=CHASSIS_SIZE,
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+        ),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(CHASSIS_OFFSET_X, CHASSIS_OFFSET_Y, CHASSIS_SIZE[2] / 2.0)),
     )
 
     # articulation (will be set dynamically based on robot type)

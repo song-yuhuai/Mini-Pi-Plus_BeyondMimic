@@ -427,8 +427,6 @@ class TerminationsCfg:
             "body_names": [                   # 监控的末端执行器
                 "left_ankle_roll_link",       # 左脚踝
                 "right_ankle_roll_link",      # 右脚踝
-                "left_wrist_yaw_link",        # 左手腕
-                "right_wrist_yaw_link",       # 右手腕
             ],
         },
     )  # 末端执行器位置偏差过大终止
