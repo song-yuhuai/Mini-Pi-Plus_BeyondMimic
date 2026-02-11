@@ -50,9 +50,9 @@ VELOCITY_RANGE = {
 }
 
 # 训练场景中的底盘箱体参数
-CHASSIS_SIZE = (1.0, 1.0, 0.16)
-CHASSIS_OFFSET_X = 1.0
-CHASSIS_OFFSET_Y = 0.3
+CHASSIS_SIZE = (1.0, 1.0, 0.19)
+CHASSIS_OFFSET_X = 0.85
+CHASSIS_OFFSET_Y = -0.5
 
 
 @configclass

@@ -20,6 +20,8 @@ X2_JOINT_NAMES = [
             "right_ankle_pitch_joint",
             "right_ankle_roll_joint",
             "waist_yaw_joint",
+            "waist_pitch_joint",
+            "waist_roll_joint",
             "left_shoulder_pitch_joint",
             "left_shoulder_roll_joint",
             "left_shoulder_yaw_joint",
@@ -31,6 +33,8 @@ X2_JOINT_NAMES = [
 ]
 
 X2_DEFAULT_JOINT_POS = [
+    0.0,
+    0.0,
     0.0,
     0.0,
     0.0,
@@ -87,7 +91,7 @@ X2_CFG = ArticulationCfg(
     spawn=sim_utils.UrdfFileCfg(
         fix_base=False,
         replace_cylinders_with_capsules=True,
-        asset_path=f"{ASSET_DIR}/x2/x2_hand.urdf",
+        asset_path=f"{ASSET_DIR}/x2/x2_ultra_simple_collision.urdf",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
