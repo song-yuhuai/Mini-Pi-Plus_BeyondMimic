@@ -76,6 +76,8 @@ class MotionCommand(CommandTerm):
         self.body_pos_relative_w = torch.zeros(self.num_envs, len(cfg.body_names), 3, device=self.device)
         self.body_quat_relative_w = torch.zeros(self.num_envs, len(cfg.body_names), 4, device=self.device)
         self.body_quat_relative_w[:, :, 0] = 1.0
+        # Enable with: DEBUG_MOTION_RESAMPLE=1 python scripts/rsl_rl/train.py --task=... --num_envs=1
+        self._debug_motion_resample = os.getenv("DEBUG_MOTION_RESAMPLE", "0") == "1"
 
         self.bin_count = int(self.motion.time_step_total // (1 / (env.cfg.decimation * env.cfg.sim.dt))) + 1
         self.bin_failed_count = torch.zeros(self.bin_count, dtype=torch.float, device=self.device)
@@ -294,6 +296,20 @@ class MotionCommand(CommandTerm):
         if len(env_ids) == 0:
             return
         self._adaptive_sampling(env_ids)
+        if self._debug_motion_resample:
+            env_ids_tensor = torch.as_tensor(env_ids, device=self.device)
+            if torch.any(env_ids_tensor == 0):
+                time_step = int(self.time_steps[0].item())
+                total_steps = int(self.motion.time_step_total)
+                denom = max(total_steps - 1, 1)
+                phase = time_step / denom
+                near_end = time_step >= total_steps - 2
+                hint = "loop_resample_near_end" if near_end else "arbitrary_or_reset"
+                print(
+                    "[MotionCommand] resample env0 time_step="
+                    f"{time_step} T={total_steps} phase={phase:.4f} hint={hint}"
+                )
+
 
         root_pos = self.body_pos_w[:, 0].clone()
         root_ori = self.body_quat_w[:, 0].clone()
