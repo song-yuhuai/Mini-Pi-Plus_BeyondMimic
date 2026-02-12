@@ -296,6 +296,12 @@ class MotionCommand(CommandTerm):
         if len(env_ids) == 0:
             return
         self._adaptive_sampling(env_ids)
+        if self.cfg.force_start_frame0:
+            self.time_steps[env_ids] = 0
+            env_ids_tensor = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
+            if torch.any(env_ids_tensor == 0):
+                print("[MotionCommand] force_start_frame0 enabled: env0 time_step -> 0")
+
         if self._debug_motion_resample:
             env_ids_tensor = torch.as_tensor(env_ids, device=self.device)
             if torch.any(env_ids_tensor == 0):
@@ -316,6 +322,13 @@ class MotionCommand(CommandTerm):
         root_lin_vel = self.body_lin_vel_w[:, 0].clone()
         root_ang_vel = self.body_ang_vel_w[:, 0].clone()
 
+        if self.cfg.force_start_frame0:
+            start_step = self.time_steps[env_ids]
+            root_pos[env_ids] = self.motion.body_pos_w[start_step, 0] + self._env.scene.env_origins[env_ids]
+            root_ori[env_ids] = self.motion.body_quat_w[start_step, 0]
+            root_lin_vel[env_ids] = self.motion.body_lin_vel_w[start_step, 0]
+            root_ang_vel[env_ids] = self.motion.body_ang_vel_w[start_step, 0]
+
         range_list = [self.cfg.pose_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
         ranges = torch.tensor(range_list, device=self.device)
         rand_samples = sample_uniform(ranges[:, 0], ranges[:, 1], (len(env_ids), 6), device=self.device)
@@ -330,6 +343,10 @@ class MotionCommand(CommandTerm):
 
         joint_pos = self.joint_pos.clone()
         joint_vel = self.joint_vel.clone()
+        if self.cfg.force_start_frame0:
+            start_step = self.time_steps[env_ids]
+            joint_pos[env_ids] = self.motion.joint_pos[start_step]
+            joint_vel[env_ids] = self.motion.joint_vel[start_step]
 
         joint_pos += sample_uniform(*self.cfg.joint_position_range, joint_pos.shape, joint_pos.device)
         soft_joint_pos_limits = self.robot.data.soft_joint_pos_limits[env_ids]
@@ -582,6 +599,7 @@ class MotionCommandCfg(CommandTermCfg):
     adaptive_lambda: float = 0.8
     adaptive_uniform_ratio: float = 0.1
     adaptive_alpha: float = 0.001
+    force_start_frame0: bool = False
     
     anchor_pos_threshold: float = 0.25
     anchor_ori_threshold: float = 0.3
