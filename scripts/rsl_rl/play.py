@@ -20,6 +20,12 @@ parser.add_argument(
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--motion_file", type=str, default=None, help="Path to the motion file.")
+parser.add_argument(
+    "--force_start_frame0",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help="Force reference motion to start from frame 0 on resample/reset (play only).",
+)
 # parser.add_argument("--motion_file", type=str, required=True, help="Path to the motion file.")
 # parser.add_argument("--resume_path", type=str, required=True, help="Path to the trained model checkpoint.")
 
@@ -112,6 +118,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     if args_cli.motion_file is not None:
         env_cfg.commands.motion.motion_file = args_cli.motion_file
+    if args_cli.force_start_frame0:
+        env_cfg.commands.motion.force_start_frame0 = True
 
     print(f"[INFO] Loading experiment from directory: {log_root_path}")
     resume_path = None
