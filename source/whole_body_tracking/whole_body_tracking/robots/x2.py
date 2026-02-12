@@ -171,6 +171,22 @@ X2_CFG = ArticulationCfg(
             damping=4,
             armature=ARMATURE_5047,
         ),
+        "waist": ImplicitActuatorCfg(
+            effort_limit_sim=50,
+            velocity_limit_sim=13.0,
+            joint_names_expr=["waist_roll_joint", "waist_pitch_joint"],
+            stiffness=300,
+            damping=6,
+            armature=0.06,
+        ),
+        "waist_yaw": ImplicitActuatorCfg(
+            effort_limit_sim=118,
+            velocity_limit_sim=12.0,
+            joint_names_expr=["waist_yaw_joint"],
+            stiffness=300,
+            damping=6,
+            armature=0.06,
+        ),
         "arms": ImplicitActuatorCfg(
             joint_names_expr=[
                 ".*_shoulder_pitch_joint",
