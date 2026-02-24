@@ -109,6 +109,46 @@ ROBOT_CONFIGS = {
             "joint_vel": 22,
             "actions": 22
         }
+    },
+    "x2": {
+        "num_actions": 23,
+        "num_obs": 124,
+        "reference_body": "pelvis",
+        "default_xml": None,  # Must be provided
+        "joint_names": [
+            "left_hip_pitch_joint",
+            "left_hip_roll_joint",
+            "left_hip_yaw_joint",
+            "left_knee_joint",
+            "left_ankle_pitch_joint",
+            "left_ankle_roll_joint",
+            "right_hip_pitch_joint",
+            "right_hip_roll_joint",
+            "right_hip_yaw_joint",
+            "right_knee_joint",
+            "right_ankle_pitch_joint",
+            "right_ankle_roll_joint",
+            "waist_yaw_joint",
+            "waist_pitch_joint",
+            "waist_roll_joint",
+            "left_shoulder_pitch_joint",
+            "left_shoulder_roll_joint",
+            "left_shoulder_yaw_joint",
+            "left_elbow_joint",
+            "right_shoulder_pitch_joint",
+            "right_shoulder_roll_joint",
+            "right_shoulder_yaw_joint",
+            "right_elbow_joint",
+        ],
+        "motion_body_index": 0,
+        "observation_structure": {
+            "command": 46,
+            "motion_ref_ori_b": 6,
+            "base_ang_vel": 3,
+            "joint_pos": 23,
+            "joint_vel": 23,
+            "actions": 23
+        },
     }
 }
 
@@ -258,7 +298,7 @@ def create_observation_hi_pi(obs, offset, motioninput, motion_ref_ori_b, omega, 
     return obs
 
 
-def run_simulation(robot_type: str, motion_file: str, xml_path: str, policy_path: str, save_json: bool = False, loop: bool = False):
+def run_simulation(robot_type: str, motion_file: str, xml_path: str, policy_path: str, save_json: bool = False, loop: bool = False, debug_orders: bool = False):
     """Run the sim2sim simulation."""
     config = ROBOT_CONFIGS[robot_type]
     print(f"[INFO]: Using robot configuration: {robot_type}")
@@ -328,8 +368,55 @@ def run_simulation(robot_type: str, motion_file: str, xml_path: str, policy_path
             action_scale = np.array([float(x) for x in prop.value.split(",")])
         print(f"{prop.key}: {prop.value}")
     
+    def validate_length(name, array, expected_len):
+        if array is None:
+            print(f"[ERROR]: Missing required ONNX metadata '{name}'.")
+            raise SystemExit(1)
+        if len(array) != expected_len:
+            print(f"[ERROR]: '{name}' length mismatch: expected {expected_len}, got {len(array)}")
+            raise SystemExit(1)
+
+    expected_len = len(joint_seq) if joint_seq is not None else None
+    if joint_seq is None:
+        print("[ERROR]: Missing required ONNX metadata 'joint_names'.")
+        raise SystemExit(1)
+
+    validate_length("action_scale", action_scale, expected_len)
+    validate_length("default_joint_pos", joint_pos_array_seq, expected_len)
+    validate_length("joint_stiffness", stiffness_array_seq, expected_len)
+    validate_length("joint_damping", damping_array_seq, expected_len)
+
     # Remap to XML joint order
     joint_xml = config["joint_names"]
+
+    missing_in_xml = sorted(set(joint_seq) - set(joint_xml))
+    missing_in_seq = sorted(set(joint_xml) - set(joint_seq))
+    if missing_in_xml or missing_in_seq:
+        print(f"[ERROR]: Joint mismatch between ONNX policy and XML config.")
+        print(f"[ERROR]: Missing in XML (present in policy): {missing_in_xml}")
+        print(f"[ERROR]: Missing in policy (present in XML): {missing_in_seq}")
+        raise SystemExit(1)
+
+    xml_idx_of_seq = [joint_xml.index(j) for j in joint_seq]
+    seq_idx_of_xml = [joint_seq.index(j) for j in joint_xml]
+
+    if debug_orders:
+        print("[DEBUG_ORDERS] joint_seq (policy order)", joint_seq)
+        print(f"[DEBUG_ORDERS] joint_seq length: {len(joint_seq)}")
+        print("[DEBUG_ORDERS] joint_xml (xml order)", joint_xml)
+        print(f"[DEBUG_ORDERS] joint_xml length: {len(joint_xml)}")
+        print(f"[DEBUG_ORDERS] missing in XML (present in policy): {missing_in_xml}")
+        print(f"[DEBUG_ORDERS] missing in policy (present in XML): {missing_in_seq}")
+        print(f"[DEBUG_ORDERS] xml_idx_of_seq: {xml_idx_of_seq}")
+        print(f"[DEBUG_ORDERS] seq_idx_of_xml: {seq_idx_of_xml}")
+        print(f"[DEBUG_ORDERS] motion joint_pos shape: {motioninputpos.shape}")
+        print(f"[DEBUG_ORDERS] motion joint_vel shape: {motioninputvel.shape}")
+        if motioninputpos.shape[1] != len(joint_seq) or motioninputvel.shape[1] != len(joint_seq):
+            print(
+                f"[WARN]: Motion DOF mismatch. joint_pos dof={motioninputpos.shape[1]}, "
+                f"joint_vel dof={motioninputvel.shape[1]}, expected={len(joint_seq)}"
+            )
+
     joint_pos_array = np.array([joint_pos_array_seq[joint_seq.index(joint)] for joint in joint_xml])
     stiffness_array = np.array([stiffness_array_seq[joint_seq.index(joint)] for joint in joint_xml])
     damping_array = np.array([damping_array_seq[joint_seq.index(joint)] for joint in joint_xml])
@@ -391,7 +478,7 @@ def run_simulation(robot_type: str, motion_file: str, xml_path: str, policy_path
                 
                 # Create observations based on robot type
                 offset = 0
-                if robot_type in ["hi", "pi_plus"]:
+                if robot_type in ["hi", "pi_plus","x2"]:
                     # HI and PI Plus observation creation
                     robot_quat_w = torch.from_numpy(quat).unsqueeze(0)
                     q01 = quat
@@ -437,8 +524,8 @@ def run_simulation(robot_type: str, motion_file: str, xml_path: str, policy_path
 
 def main():
     parser = argparse.ArgumentParser(description="Unified sim2sim script for multiple robots.")
-    parser.add_argument("--robot", type=str, choices=["hi", "pi_plus"], required=True,
-                        help="Robot type:  hi (Hi), pi_plus (PI Plus)")
+    parser.add_argument("--robot", type=str, choices=["hi", "pi_plus", "x2"], required=True,
+                        help="Robot type:  hi (Hi), pi_plus (PI Plus), x2 (X2)")
     parser.add_argument("--motion_file", type=str, required=True, 
                         help="Path to the motion NPZ file")
     parser.add_argument("--xml_path", type=str, required=True,
@@ -449,7 +536,9 @@ def main():
                         help="Save motion data to JSON file")
     parser.add_argument("--loop", action="store_true",
                         help="Loop motion/policy when reaching the end of sequence")
-    
+    parser.add_argument("--debug_orders", action="store_true",
+                        help="Print one-time joint-order and mapping diagnostics")
+
     args = parser.parse_args()
     
     # All parameters are now required, so no additional validation needed
@@ -459,7 +548,7 @@ def main():
     print(f"[INFO]: XML path: {args.xml_path}")
     print(f"[INFO]: Policy path: {args.policy_path}")
     
-    run_simulation(args.robot, args.motion_file, args.xml_path, args.policy_path, args.save_json, args.loop)
+    run_simulation(args.robot, args.motion_file, args.xml_path, args.policy_path, args.save_json, args.loop, args.debug_orders)
 
 
 if __name__ == "__main__":
