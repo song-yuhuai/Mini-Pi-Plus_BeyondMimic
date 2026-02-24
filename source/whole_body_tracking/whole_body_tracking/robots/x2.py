@@ -151,10 +151,10 @@ X2_CFG = ArticulationCfg(
                 ".*_knee_joint": 180,
             },
             damping={
-                ".*_hip_pitch_joint": 4,
-                ".*_hip_roll_joint": 4,
-                ".*_hip_yaw_joint": 4,
-                ".*_knee_joint": 6,
+                ".*_hip_pitch_joint": 6,
+                ".*_hip_roll_joint": 6,
+                ".*_hip_yaw_joint": 6,
+                ".*_knee_joint": 9,
             },
             armature={
                 ".*_hip_pitch_joint": ARMATURE_5047,
@@ -168,7 +168,7 @@ X2_CFG = ArticulationCfg(
             velocity_limit_sim=13.0,
             joint_names_expr=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"],
             stiffness=150,
-            damping=4,
+            damping=6,
             armature=ARMATURE_5047,
         ),
         "waist": ImplicitActuatorCfg(
@@ -176,16 +176,16 @@ X2_CFG = ArticulationCfg(
             velocity_limit_sim=13.0,
             joint_names_expr=["waist_roll_joint", "waist_pitch_joint"],
             stiffness=300,
-            damping=6,
-            armature=0.06,
+            damping=9,
+            armature=0.03,
         ),
         "waist_yaw": ImplicitActuatorCfg(
             effort_limit_sim=118,
             velocity_limit_sim=12.0,
             joint_names_expr=["waist_yaw_joint"],
             stiffness=300,
-            damping=6,
-            armature=0.06,
+            damping=9,
+            armature=0.03,
         ),
         "arms": ImplicitActuatorCfg(
             joint_names_expr=[
@@ -213,10 +213,10 @@ X2_CFG = ArticulationCfg(
                 ".*_elbow_joint": 80,
             },
             damping={
-                ".*_shoulder_pitch_joint": 2,
-                ".*_shoulder_roll_joint": 2,
-                ".*_shoulder_yaw_joint": 2,
-                ".*_elbow_joint": 2,
+                ".*_shoulder_pitch_joint": 3,
+                ".*_shoulder_roll_joint": 3,
+                ".*_shoulder_yaw_joint": 3,
+                ".*_elbow_joint": 3,
             },
             armature={
                 ".*_shoulder_pitch_joint": ARMATURE_4438,
