@@ -143,15 +143,16 @@ class CommandsCfg:
         resampling_time_range=(1.0e9, 1.0e9), # 重采样时间范围(s) - 极大值表示不重采样
         debug_vis=True,                       # 启用调试可视化
         pose_range={                          # 姿态随机化范围
-            "x": (-0.05, 0.05),              # X方向位置偏移(m)
-            "y": (-0.05, 0.05),              # Y方向位置偏移(m)
-            "z": (-0.01, 0.01),              # Z方向位置偏移(m)
-            "roll": (-0.1, 0.1),             # 翻滚角偏移(rad)
-            "pitch": (-0.1, 0.1),            # 俯仰角偏移(rad)
-            "yaw": (-0.2, 0.2),              # 偏航角偏移(rad)
+            "x": (0.0, 0.0),                 # 禁用根位置随机化
+            "y": (0.0, 0.0),
+            "z": (0.0, 0.0),
+            "roll": (0.0, 0.0),              # 禁用根姿态随机化
+            "pitch": (0.0, 0.0),
+            "yaw": (0.0, 0.0),
         },
         velocity_range=VELOCITY_RANGE,        # 速度随机化范围
         joint_position_range=(-0.1, 0.1),    # 关节位置随机化范围(rad)
+        force_start_frame0=True,              # 重置时固定从动作第0帧开始
     )
 
 

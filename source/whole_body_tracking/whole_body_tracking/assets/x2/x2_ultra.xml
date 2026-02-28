@@ -64,7 +64,7 @@
   </asset>
 
   <worldbody>
-    <body name="chassis_box" pos="0.85 0.0 0.095">
+    <body name="chassis_box" pos="0.85 0.0 0.08">
       <geom name="chassis_box_geom"
             type="box"
             size="0.5 0.5 0.095"
