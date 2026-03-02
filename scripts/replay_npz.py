@@ -57,12 +57,16 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from whole_body_tracking.robots.hi import HI_CFG
 from whole_body_tracking.robots.pi_plus import PI_PLUS_CFG
 from whole_body_tracking.robots.x2 import X2_CFG
+from whole_body_tracking.tasks.tracking.chassis_geometry import (
+    CHASSIS_BASE_POS,
+    CHASSIS_BASE_SIZE,
+    CHASSIS_DYNAMIC_FRICTION,
+    CHASSIS_MIDDLE_POS,
+    CHASSIS_MIDDLE_SIZE,
+    CHASSIS_RESTITUTION,
+    CHASSIS_STATIC_FRICTION,
+)
 from whole_body_tracking.tasks.tracking.mdp import MotionLoader
-
-# Chassis box settings (size is full dimensions in meters).
-CHASSIS_SIZE = (0.6, 0.6, 0.16)
-CHASSIS_OFFSET_X = 0.62
-CHASSIS_OFFSET_Y = -0.35
 
 # Robot configurations
 ROBOT_CONFIGS = {
@@ -94,16 +98,36 @@ class ReplayMotionsSceneCfg(InteractiveSceneCfg):
             texture_file=f"{ISAAC_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
         ),
     )
-
+    
+    # MuJoCo half-extents (0.21, 0.21, 0.08) map to full-size base platform 0.42 x 0.42 x 0.16 (top at z=0.16m).
     chassis_box = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/ChassisBox",
+        prim_path="{ENV_REGEX_NS}/chassis_box",
         spawn=sim_utils.CuboidCfg(
-            # IsaacLab CuboidCfg.size uses full dimensions, not half-extents.
-            size=CHASSIS_SIZE,
+            size=CHASSIS_BASE_SIZE,
             collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=CHASSIS_STATIC_FRICTION,
+                dynamic_friction=CHASSIS_DYNAMIC_FRICTION,
+                restitution=CHASSIS_RESTITUTION,
+            ),
         ),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(CHASSIS_OFFSET_X, CHASSIS_OFFSET_Y, CHASSIS_SIZE[2] / 2.0)),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=CHASSIS_BASE_POS),
+    )
+
+    chassis_middle_box = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/chassis_middle_box",
+        spawn=sim_utils.CuboidCfg(
+            size=CHASSIS_MIDDLE_SIZE,
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=CHASSIS_STATIC_FRICTION,
+                dynamic_friction=CHASSIS_DYNAMIC_FRICTION,
+                restitution=CHASSIS_RESTITUTION,
+            ),
+        ),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=CHASSIS_MIDDLE_POS),
     )
 
     # articulation (will be set dynamically based on robot type)

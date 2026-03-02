@@ -33,6 +33,15 @@ from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import whole_body_tracking.tasks.tracking.mdp as mdp
+from whole_body_tracking.tasks.tracking.chassis_geometry import (
+    CHASSIS_BASE_POS,
+    CHASSIS_BASE_SIZE,
+    CHASSIS_DYNAMIC_FRICTION,
+    CHASSIS_MIDDLE_POS,
+    CHASSIS_MIDDLE_SIZE,
+    CHASSIS_RESTITUTION,
+    CHASSIS_STATIC_FRICTION,
+)
 
 ##
 # 场景定义
@@ -48,12 +57,6 @@ VELOCITY_RANGE = {
     "pitch": (-0.52, 0.52),# 俯仰角速度(约30度/秒)
     "yaw": (-0.78, 0.78),  # 偏航角速度(约45度/秒)
 }
-
-# 训练场景中的底盘箱体参数
-CHASSIS_SIZE = (0.6, 0.6, 0.16)
-CHASSIS_OFFSET_X = 0.62
-CHASSIS_OFFSET_Y = -0.35
-
 
 @configclass
 class MySceneCfg(InteractiveSceneCfg):
@@ -97,23 +100,37 @@ class MySceneCfg(InteractiveSceneCfg):
         ),
     )
     
-    # 底盘箱体（用于踏步接触）
+    # 底盘平台（MuJoCo half-extents 0.21/0.21/0.08 => full size 0.42/0.42/0.16，顶面 z=0.16m）
     chassis_box = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/ChassisBox",
+        prim_path="{ENV_REGEX_NS}/chassis_box",
         spawn=sim_utils.CuboidCfg(
-            # CuboidCfg.size uses full dimensions.
-            size=CHASSIS_SIZE,
+            # IsaacLab CuboidCfg.size uses full dimensions.
+            size=CHASSIS_BASE_SIZE,
             collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=1.0,
-                dynamic_friction=1.0,
-                restitution=0.0,
+                static_friction=CHASSIS_STATIC_FRICTION,
+                dynamic_friction=CHASSIS_DYNAMIC_FRICTION,
+                restitution=CHASSIS_RESTITUTION,
             ),
         ),
-        init_state=AssetBaseCfg.InitialStateCfg(
-            pos=(CHASSIS_OFFSET_X, CHASSIS_OFFSET_Y, CHASSIS_SIZE[2] / 2.0)
+        init_state=AssetBaseCfg.InitialStateCfg(pos=CHASSIS_BASE_POS),
+    )
+
+    # 中间凸起（MuJoCo half-extents 0.21/0.07/0.04 => full size 0.42/0.14/0.08）
+    chassis_middle_box = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/chassis_middle_box",
+        spawn=sim_utils.CuboidCfg(
+            size=CHASSIS_MIDDLE_SIZE,
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=CHASSIS_STATIC_FRICTION,
+                dynamic_friction=CHASSIS_DYNAMIC_FRICTION,
+                restitution=CHASSIS_RESTITUTION,
+            ),
         ),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=CHASSIS_MIDDLE_POS),
     )
 
     # 接触力传感器配置
