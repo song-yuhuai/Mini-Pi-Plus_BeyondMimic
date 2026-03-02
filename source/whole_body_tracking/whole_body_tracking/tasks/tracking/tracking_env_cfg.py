@@ -152,7 +152,7 @@ class CommandsCfg:
         },
         velocity_range=VELOCITY_RANGE,        # 速度随机化范围
         joint_position_range=(-0.1, 0.1),    # 关节位置随机化范围(rad)
-        force_start_frame0=True,              # 重置时固定从动作第0帧开始
+
     )
 
 
