@@ -61,7 +61,7 @@ from whole_body_tracking.tasks.tracking.mdp import MotionLoader
 
 # Chassis box settings (size is full dimensions in meters).
 CHASSIS_SIZE = (0.6, 0.6, 0.16)
-CHASSIS_OFFSET_X = 0.7
+CHASSIS_OFFSET_X = 0.62
 CHASSIS_OFFSET_Y = -0.35
 
 # Robot configurations
