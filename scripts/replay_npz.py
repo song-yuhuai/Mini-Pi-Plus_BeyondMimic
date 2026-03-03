@@ -56,7 +56,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 ##
 from whole_body_tracking.robots.hi import HI_CFG
 from whole_body_tracking.robots.pi_plus import PI_PLUS_CFG
-from whole_body_tracking.robots.gp02_v2 import GP02_V2_CFG
+# from whole_body_tracking.robots.gp02_v2 import GP02_V2_CFG
 from whole_body_tracking.robots.x2 import X2_CFG
 from whole_body_tracking.tasks.tracking.mdp import MotionLoader
 
@@ -70,10 +70,10 @@ ROBOT_CONFIGS = {
         "cfg": PI_PLUS_CFG,
         "name": "PI Plus"
     },
-    "gp02_v2": {
-        "cfg": GP02_V2_CFG,
-        "name": "GP02_V2"
-    },
+    # "gp02_v2": {
+    #     "cfg": GP02_V2_CFG,
+    #     "name": "GP02_V2"
+    # },
     "x2": {
         "cfg": X2_CFG,
         "name": "X2"

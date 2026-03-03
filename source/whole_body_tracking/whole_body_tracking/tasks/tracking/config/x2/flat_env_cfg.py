@@ -197,3 +197,17 @@ class X2StairRobustEnvCfg(X2StairEnvCfg):
         self.rewards.motion_body_ang_vel.weight = 0.8
         self.terminations.anchor_pos.params["threshold"] = 0.30
         self.terminations.ee_body_pos.params["threshold"] = 0.30
+
+
+@configclass
+class X2FlatEnvCfg(X2StairEnvCfg):
+    """Flat-ground X2 tracking variant with no stair/chassis obstacle."""
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Keep the same tracking task configuration, but remove the stair obstacle.
+        self.scene.stair_step = None
+
+        # Explicitly enforce flat terrain.
+        self.scene.terrain.terrain_type = "plane"
