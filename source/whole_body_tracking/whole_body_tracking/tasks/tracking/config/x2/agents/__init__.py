@@ -1,1 +1,1 @@
-"""Agent configurations for X2 tracking tasks."""
+"""Agent configs for X2 stair tracking."""

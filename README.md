@@ -58,7 +58,7 @@ For easy data inspection:
 python scripts/bvh_to_robot.py --bvh_file MotionData/lafan1/{xxx}.bvh --robot pi_football --save_path RetargetData/lafan1/csv/pi_plus/{xxx}.csv --rate_limit
 
 # Trimming
-python scripts/csv_cut_pi_plus.py --input_csv RetargetData/lafan1/csv/pi_plus/pi_plus_dance1_subject2.csv --output_csv RetargetData/lafan1/csv/pi_plus/{xxx}.csv --start_frame {number} --end_frame {number} --remove_frame_column --z_offset 0.00 --decimal_places 6
+python scripts/csv_cut.py --input_csv RetargetData/lafan1/csv/pi_plus/pi_plus_dance1_subject2.csv --output_csv RetargetData/lafan1/csv/pi_plus/{xxx}.csv --start_frame {number} --end_frame {number} --remove_frame_column --z_offset 0.00 --decimal_places 6
 
 # NPZ format conversion
 conda activate {your_env_isaaclab}
@@ -68,6 +68,22 @@ python scripts/csv_to_npz.py --robot pi_plus --input_file source/motion/hightorq
 
 # Data playback
 python scripts/replay_npz.py --robot pi_plus --motion_file source/motion/hightorque/pi_plus/npz/{motion_name}.npz 
+```
+### conda env error
+
+```bash
+mkdir -p "$CONDA_PREFIX/etc/conda/activate.d" "$CONDA_PREFIX/etc/conda/deactivate.d"
+
+cat > "$CONDA_PREFIX/etc/conda/activate.d/isaacsim_fix.sh" <<'SH'
+# Prefer conda libstdc++ to satisfy CXXABI_1.3.15 for Isaac Sim / IsaacLab
+export _OLD_LD_PRELOAD="$LD_PRELOAD"
+export LD_PRELOAD="$CONDA_PREFIX/lib/libstdc++.so.6:$CONDA_PREFIX/lib/libgcc_s.so.1${LD_PRELOAD:+:$LD_PRELOAD}"
+SH
+
+cat > "$CONDA_PREFIX/etc/conda/deactivate.d/isaacsim_fix.sh" <<'SH'
+export LD_PRELOAD="$_OLD_LD_PRELOAD"
+unset _OLD_LD_PRELOAD
+SH
 ```
 
 ### Model Training
@@ -87,6 +103,117 @@ Play the trained policy with the following command:
 python scripts/rsl_rl/play.py --task=Tracking-Flat-PI-Plus-Wo-v0 --checkpoint {logs_path_to}/model_xxx.pt --num_envs=1 --motion_file source/motion/hightorque/pi_plus/npz/{motion_name}.npz
 ```
 ![if](https://github.com/Daily-study-HT/bydmimic_publish/blob/main/gif/e7faf89fbdbf87cf909bbf81ceeb1a7f.gif)
+
+### FB-Zero Off-Policy Workflow (Standalone)
+
+Use this section if you want to train and evaluate the FB-Zero pipeline (`train_fb_zero.py` / `infer_fb_zero.py`) instead of PPO.
+
+1. Train FB-Zero from scratch:
+
+```bash
+# Paper-style defaults are already set in train_fb_zero.py.
+PYTHONUNBUFFERED=1 python scripts/offpolicy/train_fb_zero.py \
+  --task=Tracking-Stair-X2-v0 \
+  --motion_file=source/motion/x2/npz/step_low_far.npz \
+  --headless
+```
+
+Optional override examples:
+
+```bash
+# Disable compiled update path for debugging
+python scripts/offpolicy/train_fb_zero.py --task=Tracking-Stair-X2-v0 --motion_file=source/motion/x2/npz/step_low_far.npz --headless --no-compile-update
+
+# Smaller-GPU profile
+python scripts/offpolicy/train_fb_zero.py --task=Tracking-Stair-X2-v0 --motion_file=source/motion/x2/npz/step_low_far.npz --headless --num_envs=256 --batch_size=512 --num_updates=8
+```
+
+Expected outputs:
+- Run directory line, e.g. `logs/offpolicy_fb/{timestamp}`.
+- Periodic training logs as metric dictionaries (BFM-zero style) plus heartbeat lines.
+- Saved checkpoints under `logs/offpolicy_fb/{run_name}/checkpoints/`.
+- Exported `logs/offpolicy_fb/{run_name}/bfm_zero_full_defaults.json` (ported full arch/train preset).
+- Default profile is paper-style (`num_envs=1024`, high UTD schedule, `grad_penalty=10`, CUDA replay, compiled updates).
+- `--num_iterations` is the primary stop condition when provided.
+- `--random_steps` and `--update_every` are measured in env-steps (not collector iterations).
+- For smaller GPUs, reduce `--num_envs` first (e.g. 128/256), then tune `--num_updates` and `--batch_size`.
+- Expert source knob:
+  - `--expert_source=reward|motion|reward_or_motion` (`reward_or_motion` default).
+- In-training tracking eval (BFM-style cadence):
+  - `--eval_every_steps` and `--eval_steps`
+  - runtime prints `[EVAL] ...` and writes `logs/offpolicy_fb/{run_name}/tracking_eval_log.csv`
+
+2. Resume FB-Zero training from a checkpoint:
+
+```bash
+python scripts/offpolicy/train_fb_zero.py \
+  --task=Tracking-Stair-X2-v0 \
+  --motion_file=source/motion/x2/npz/step_low_far.npz \
+  --resume logs/offpolicy_fb/{run_name}/checkpoints/final.pt \
+  --num_iterations=40000 \
+  --total_env_steps=400000
+```
+
+3. Infer latent `z` and rollout check (Phase 4 final inference):
+
+```bash
+python scripts/offpolicy/infer_fb_zero.py \
+  --checkpoint logs/offpolicy_fb/{run_name}/checkpoints/final.pt \
+  --task=Tracking-Stair-X2-v0 \
+  --motion_file=source/motion/x2/npz/step_low_far.npz \
+  --num_envs=1 \
+  --mode=tracking \
+  --steps=2000
+```
+
+Optional latent modes:
+
+```bash
+python scripts/offpolicy/infer_fb_zero.py --checkpoint {ckpt} --task=Tracking-Stair-X2-v0 --mode=goal --goal_index=0
+python scripts/offpolicy/infer_fb_zero.py --checkpoint {ckpt} --task=Tracking-Stair-X2-v0 --mode=reward --reward_samples=4096 --reward_temperature=10.0
+```
+
+Expected outputs:
+- Console log with selected mode and latent norm, e.g. `[INFO] mode=tracking, z_norm=1.0000`.
+- Console log with rollout reward summary, e.g. `[INFO] Avg reward over 2000 steps: ...`.
+- If `--save_z` is set, a JSON file containing the inferred latent vector `z`.
+
+4. Evaluate latent tracking quality:
+
+```bash
+python scripts/offpolicy/eval_fb_zero.py \
+  --checkpoint logs/offpolicy_fb/{run_name}/checkpoints/final.pt \
+  --task=Tracking-Stair-X2-v0 \
+  --motion_file=source/motion/x2/npz/step_low_far.npz \
+  --mode=tracking \
+  --steps=3000 \
+  --save_report logs/offpolicy_fb/{run_name}/eval_tracking.json
+```
+
+Expected outputs:
+- `avg_step_reward`, `done_count`, `episodes_finished`, `avg_episode_return`.
+- Mean scalar metrics collected from environment `info` (if available).
+- Optional JSON report via `--save_report`.
+
+5. Deploy-like tracking evaluation (sequence-z + gamma/window smoothing):
+
+```bash
+python scripts/offpolicy/eval_fb_zero_tracking.py \
+  --checkpoint logs/offpolicy_fb/{run_name}/checkpoints/final.pt \
+  --task=Tracking-Stair-X2-v0 \
+  --motion_file=source/motion/x2/npz/step_low_far.npz \
+  --num_envs=1 \
+  --steps=3000 \
+  --window_size=3 \
+  --gamma=0.8 \
+  --save_z_seq logs/offpolicy_fb/{run_name}/z_seq_tracking.json \
+  --save_report logs/offpolicy_fb/{run_name}/eval_tracking_seq.json
+```
+
+Expected outputs:
+- Runtime tracking evaluation with time-varying latent `z_t`.
+- `z_t` uses discounted smoothing over recent latent history (`window_size`, `gamma`).
+- Optional saved `z` sequence (`--save_z_seq`) and metrics report (`--save_report`).
 
 ### Model Evaluation
 
@@ -193,7 +320,7 @@ conda install -c conda-forge libstdcxx-ng -y
 python scripts/bvh_to_robot.py --bvh_file MotionData/lafan1/{xxx}.bvh --robot pi_football --save_path RetargetData/lafan1/csv/pi_plus/{xxx}.csv --rate_limit
 
 # 裁剪
-python scripts/csv_cut_pi_plus.py --input_csv RetargetData/lafan1/csv/pi_plus/pi_plus_dance1_subject2.csv --output_csv RetargetData/lafan1/csv/pi_plus/{xxx}.csv --start_frame {number} --end_frame {number} --remove_frame_column --z_offset 0.00 --decimal_places 6
+python scripts/csv_cut.py --input_csv RetargetData/lafan1/csv/pi_plus/pi_plus_dance1_subject2.csv --output_csv RetargetData/lafan1/csv/pi_plus/{xxx}.csv --start_frame {number} --end_frame {number} --remove_frame_column --z_offset 0.00 --decimal_places 6
 
 # npz格式转换
 conda activate {your_env_isaaclab}

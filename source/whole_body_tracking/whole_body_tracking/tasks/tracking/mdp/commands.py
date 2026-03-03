@@ -65,6 +65,15 @@ class MotionCommand(CommandTerm):
         super().__init__(cfg, env)
 
         self.robot: Articulation = env.scene[cfg.asset_name]
+        total_joint_count = self.robot.data.joint_pos.shape[1]
+        if self.cfg.joint_names is None:
+            joint_ids = torch.arange(total_joint_count, dtype=torch.long, device=self.device)
+        else:
+            joint_ids = torch.tensor(
+                self.robot.find_joints(self.cfg.joint_names, preserve_order=True)[0], dtype=torch.long, device=self.device
+            )
+        self.joint_ids = joint_ids
+
         self.robot_anchor_body_index = self.robot.body_names.index(self.cfg.anchor_body_name)
         self.motion_anchor_body_index = self.cfg.body_names.index(self.cfg.anchor_body_name)
         self.body_indexes = torch.tensor(
@@ -72,14 +81,41 @@ class MotionCommand(CommandTerm):
         )
 
         self.motion = MotionLoader(self.cfg.motion_file, self.body_indexes, device=self.device)
-        self.time_steps = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+
+        self.phase_start_count = max(0, int(self.cfg.phase_start_count))
+        phase_end_default = self.motion.time_step_total - 1
+        if self.cfg.phase_end_count < 0:
+            self.phase_end_count = phase_end_default
+        else:
+            self.phase_end_count = min(int(self.cfg.phase_end_count), phase_end_default)
+        if self.phase_end_count < self.phase_start_count:
+            raise RuntimeError(
+                f"Invalid phase window: start={self.phase_start_count}, end={self.phase_end_count}, "
+                f"motion_length={self.motion.time_step_total}."
+            )
+        self.phase_step_count = self.phase_end_count - self.phase_start_count + 1
+
+        motion_joint_count = self.motion.joint_pos.shape[1]
+        selected_joint_count = len(self.joint_ids)
+        if motion_joint_count != selected_joint_count:
+            # If config selected a subset but the motion has full robot DoF, use full-joint mode automatically.
+            if motion_joint_count == total_joint_count:
+                self.joint_ids = torch.arange(total_joint_count, dtype=torch.long, device=self.device)
+            else:
+                raise RuntimeError(
+                    "Motion joint dimension mismatch: "
+                    f"motion has {motion_joint_count} joints, "
+                    f"selected robot joints has {selected_joint_count}, "
+                    f"robot total joints has {total_joint_count}."
+                )
+        self.time_steps = torch.full(
+            (self.num_envs,), self.phase_start_count, dtype=torch.long, device=self.device
+        )
         self.body_pos_relative_w = torch.zeros(self.num_envs, len(cfg.body_names), 3, device=self.device)
         self.body_quat_relative_w = torch.zeros(self.num_envs, len(cfg.body_names), 4, device=self.device)
         self.body_quat_relative_w[:, :, 0] = 1.0
-        # Enable with: DEBUG_MOTION_RESAMPLE=1 python scripts/rsl_rl/train.py --task=... --num_envs=1
-        self._debug_motion_resample = os.getenv("DEBUG_MOTION_RESAMPLE", "0") == "1"
 
-        self.bin_count = int(self.motion.time_step_total // (1 / (env.cfg.decimation * env.cfg.sim.dt))) + 1
+        self.bin_count = int(self.phase_step_count // (1 / (env.cfg.decimation * env.cfg.sim.dt))) + 1
         self.bin_failed_count = torch.zeros(self.bin_count, dtype=torch.float, device=self.device)
         self._current_bin_failed = torch.zeros(self.bin_count, dtype=torch.float, device=self.device)
         self.kernel = torch.tensor(
@@ -175,11 +211,11 @@ class MotionCommand(CommandTerm):
 
     @property
     def robot_joint_pos(self) -> torch.Tensor:
-        return self.robot.data.joint_pos
+        return self.robot.data.joint_pos[:, self.joint_ids]
 
     @property
     def robot_joint_vel(self) -> torch.Tensor:
-        return self.robot.data.joint_vel
+        return self.robot.data.joint_vel[:, self.joint_ids]
 
     @property
     def robot_body_pos_w(self) -> torch.Tensor:
@@ -258,7 +294,9 @@ class MotionCommand(CommandTerm):
         episode_failed = self._env.termination_manager.terminated[env_ids]
         if torch.any(episode_failed):
             current_bin_index = torch.clamp(
-                (self.time_steps * self.bin_count) // max(self.motion.time_step_total, 1), 0, self.bin_count - 1
+                ((self.time_steps - self.phase_start_count) * self.bin_count) // max(self.phase_step_count, 1),
+                0,
+                self.bin_count - 1,
             )
             fail_bins = current_bin_index[env_ids][episode_failed]
             self._current_bin_failed[:] = torch.bincount(fail_bins, minlength=self.bin_count)
@@ -277,11 +315,16 @@ class MotionCommand(CommandTerm):
         sampled_bins = torch.multinomial(sampling_probabilities, len(env_ids), replacement=True)
 
         self.time_steps[env_ids] = (
-            (sampled_bins + sample_uniform(0.0, 1.0, (len(env_ids),), device=self.device))
-            / self.bin_count
-            * (self.motion.time_step_total - 1)
-        ).long()
-        self.time_steps[env_ids] = (sampled_bins / self.bin_count * (self.motion.time_step_total - 1)).long()
+            self.phase_start_count
+            + (
+                (sampled_bins + sample_uniform(0.0, 1.0, (len(env_ids),), device=self.device))
+                / self.bin_count
+                * max(self.phase_step_count - 1, 0)
+            ).long()
+        )
+        self.time_steps[env_ids] = (
+            self.phase_start_count + (sampled_bins / self.bin_count * max(self.phase_step_count - 1, 0)).long()
+        )
 
         # Metrics
         H = -(sampling_probabilities * (sampling_probabilities + 1e-12).log()).sum()
@@ -296,38 +339,11 @@ class MotionCommand(CommandTerm):
         if len(env_ids) == 0:
             return
         self._adaptive_sampling(env_ids)
-        if self.cfg.force_start_frame0:
-            self.time_steps[env_ids] = 0
-            env_ids_tensor = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
-            if torch.any(env_ids_tensor == 0):
-                print("[MotionCommand] force_start_frame0 enabled: env0 time_step -> 0")
-
-        if self._debug_motion_resample:
-            env_ids_tensor = torch.as_tensor(env_ids, device=self.device)
-            if torch.any(env_ids_tensor == 0):
-                time_step = int(self.time_steps[0].item())
-                total_steps = int(self.motion.time_step_total)
-                denom = max(total_steps - 1, 1)
-                phase = time_step / denom
-                near_end = time_step >= total_steps - 2
-                hint = "loop_resample_near_end" if near_end else "arbitrary_or_reset"
-                print(
-                    "[MotionCommand] resample env0 time_step="
-                    f"{time_step} T={total_steps} phase={phase:.4f} hint={hint}"
-                )
-
 
         root_pos = self.body_pos_w[:, 0].clone()
         root_ori = self.body_quat_w[:, 0].clone()
         root_lin_vel = self.body_lin_vel_w[:, 0].clone()
         root_ang_vel = self.body_ang_vel_w[:, 0].clone()
-
-        if self.cfg.force_start_frame0:
-            start_step = self.time_steps[env_ids]
-            root_pos[env_ids] = self.motion.body_pos_w[start_step, 0] + self._env.scene.env_origins[env_ids]
-            root_ori[env_ids] = self.motion.body_quat_w[start_step, 0]
-            root_lin_vel[env_ids] = self.motion.body_lin_vel_w[start_step, 0]
-            root_ang_vel[env_ids] = self.motion.body_ang_vel_w[start_step, 0]
 
         range_list = [self.cfg.pose_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
         ranges = torch.tensor(range_list, device=self.device)
@@ -343,13 +359,9 @@ class MotionCommand(CommandTerm):
 
         joint_pos = self.joint_pos.clone()
         joint_vel = self.joint_vel.clone()
-        if self.cfg.force_start_frame0:
-            start_step = self.time_steps[env_ids]
-            joint_pos[env_ids] = self.motion.joint_pos[start_step]
-            joint_vel[env_ids] = self.motion.joint_vel[start_step]
 
         joint_pos += sample_uniform(*self.cfg.joint_position_range, joint_pos.shape, joint_pos.device)
-        soft_joint_pos_limits = self.robot.data.soft_joint_pos_limits[env_ids]
+        soft_joint_pos_limits = self.robot.data.soft_joint_pos_limits[env_ids][:, self.joint_ids]
         joint_pos[env_ids] = torch.clip(
             joint_pos[env_ids], soft_joint_pos_limits[:, :, 0], soft_joint_pos_limits[:, :, 1]
         )
@@ -401,7 +413,9 @@ class MotionCommand(CommandTerm):
                 root_lin_vel[supine_env_ids] = 0.0
                 root_ang_vel[supine_env_ids] = 0.0
 
-        self.robot.write_joint_state_to_sim(joint_pos[env_ids], joint_vel[env_ids], env_ids=env_ids)
+        self.robot.write_joint_state_to_sim(
+            joint_pos[env_ids], joint_vel[env_ids], env_ids=env_ids, joint_ids=self.joint_ids
+        )
         self.robot.write_root_state_to_sim(
             torch.cat([root_pos[env_ids], root_ori[env_ids], root_lin_vel[env_ids], root_ang_vel[env_ids]], dim=-1),
             env_ids=env_ids,
@@ -427,7 +441,7 @@ class MotionCommand(CommandTerm):
 
     def _update_command(self):
         self.time_steps += 1
-        env_ids = torch.where(self.time_steps >= self.motion.time_step_total)[0]
+        env_ids = torch.where(self.time_steps > self.phase_end_count)[0]
         self._resample_command(env_ids)
 
         anchor_pos_w_repeat = self.anchor_pos_w[:, None, :].repeat(1, len(self.cfg.body_names), 1)
@@ -589,6 +603,7 @@ class MotionCommandCfg(CommandTermCfg):
     motion_file: str = MISSING
     anchor_body_name: str = MISSING
     body_names: list[str] = MISSING
+    joint_names: list[str] | None = None
 
     pose_range: dict[str, tuple[float, float]] = {}
     velocity_range: dict[str, tuple[float, float]] = {}
@@ -599,7 +614,6 @@ class MotionCommandCfg(CommandTermCfg):
     adaptive_lambda: float = 0.8
     adaptive_uniform_ratio: float = 0.1
     adaptive_alpha: float = 0.001
-    force_start_frame0: bool = False
     
     anchor_pos_threshold: float = 0.25
     anchor_ori_threshold: float = 0.3
@@ -621,3 +635,7 @@ class MotionCommandCfg(CommandTermCfg):
     min_force: float = 0.0  # 最小辅助力
     max_force: float = 500.0  # 最大辅助力
     standing_base_force: float = 50.0  # 站立环境的基础力
+
+    # Optional phase window for get-up style mimic clips.
+    phase_start_count: int = 0
+    phase_end_count: int = -1

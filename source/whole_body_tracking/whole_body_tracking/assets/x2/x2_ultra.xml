@@ -1,4 +1,4 @@
-<mujoco model="x2t2.5">
+<mujoco model="x2">
   <compiler angle='radian' eulerseq="XYZ" meshdir="./meshes"
     autolimits="true" />
 

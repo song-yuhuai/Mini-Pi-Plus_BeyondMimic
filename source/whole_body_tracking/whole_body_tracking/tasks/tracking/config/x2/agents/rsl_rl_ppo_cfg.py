@@ -3,14 +3,14 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 
 
 @configclass
-class X2FlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+class X2StairPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 100000
+    max_iterations = 120000
     save_interval = 1000
-    experiment_name = "x2_flat"
+    experiment_name = "x2_stair"
     empirical_normalization = True
     policy = RslRlPpoActorCriticCfg(
-        init_noise_std=0.6,
+        init_noise_std=1.0,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
@@ -20,24 +20,12 @@ class X2FlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         use_clipped_value_loss=True,
         clip_param=0.2,
         entropy_coef=0.005,
-        num_learning_epochs=3,
+        num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=3.0e-4,
+        learning_rate=1.0e-3,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
         desired_kl=0.01,
         max_grad_norm=1.0,
     )
-
-
-LOW_FREQ_SCALE = 0.5
-
-
-@configclass
-class X2FlatLowFreqPPORunnerCfg(X2FlatPPORunnerCfg):
-    def __post_init__(self):
-        super().__post_init__()
-        self.num_steps_per_env = round(self.num_steps_per_env * LOW_FREQ_SCALE)
-        self.algorithm.gamma = self.algorithm.gamma ** (1 / LOW_FREQ_SCALE)
-        self.algorithm.lam = self.algorithm.lam ** (1 / LOW_FREQ_SCALE)

@@ -3,12 +3,19 @@
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import pathlib
 import sys
 
 from isaaclab.app import AppLauncher
 
 # local imports
 import cli_args  # isort: skip
+
+# Ensure local package import works when running script from repo root.
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+WHOLE_BODY_TRACKING_PATH = REPO_ROOT / "source" / "whole_body_tracking"
+if WHOLE_BODY_TRACKING_PATH.exists():
+    sys.path.insert(0, str(WHOLE_BODY_TRACKING_PATH))
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
@@ -20,12 +27,6 @@ parser.add_argument(
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--motion_file", type=str, default=None, help="Path to the motion file.")
-parser.add_argument(
-    "--force_start_frame0",
-    action=argparse.BooleanOptionalAction,
-    default=False,
-    help="Force reference motion to start from frame 0 on resample/reset (play only).",
-)
 # parser.add_argument("--motion_file", type=str, required=True, help="Path to the motion file.")
 # parser.add_argument("--resume_path", type=str, required=True, help="Path to the trained model checkpoint.")
 
@@ -49,7 +50,6 @@ simulation_app = app_launcher.app
 
 import gymnasium as gym
 import os
-import pathlib
 import torch
 
 from rsl_rl.runners import OnPolicyRunner
@@ -118,8 +118,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     if args_cli.motion_file is not None:
         env_cfg.commands.motion.motion_file = args_cli.motion_file
-    if args_cli.force_start_frame0:
-        env_cfg.commands.motion.force_start_frame0 = True
 
     print(f"[INFO] Loading experiment from directory: {log_root_path}")
     resume_path = None
@@ -182,7 +180,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         path=export_model_dir,
         filename=exported_onnx_name,
     )
-    attach_onnx_metadata(env.unwrapped, args_cli.wandb_path if args_cli.wandb_path else "none", export_model_dir,exported_onnx_name)
+    attach_onnx_metadata(
+        env.unwrapped,
+        args_cli.wandb_path if args_cli.wandb_path else "none",
+        export_model_dir,
+        exported_onnx_name,
+        yaml_path=os.path.join(log_dir, "params", "deploy.yaml"),
+    )
     # reset environment
     obs, _ = env.get_observations()
     timestep = 0

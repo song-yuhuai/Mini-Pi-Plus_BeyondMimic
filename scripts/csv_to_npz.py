@@ -17,21 +17,16 @@
     # For PI Plus robot:
     python csv_to_npz.py --robot pi_plus --input_file source/motion/hightorque/pi_plus/csv/dance1_subject2.csv --input_fps 30 \
     --frame_range 174 424 --output_name source/motion/hightorque/pi_plus/npz/dance1_subject2 --output_fps 50
-
-    # For X2 robot:
-    python csv_to_npz.py --robot x2 --input_file source/motion/hightorque/x2/csv/dance1_subject2.csv --input_fps 30 \
-    --frame_range 174 424 --output_name source/motion/hightorque/x2/npz/dance1_subject2 --output_fps 50
-
-    # For PI Plus Waist Shell robot:
-    python csv_to_npz.py --robot pi_plus_waist_shell --input_file source/motion/hightorque/pi_plus_waist_shell/csv/dance1_subject2.csv --input_fps 30 \
-    --frame_range 174 424 --output_name source/motion/hightorque/pi_plus_waist_shell/npz/dance1_subject2 --output_fps 50
 """
 
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import importlib
 import numpy as np
 import os
+import sys
+from pathlib import Path
 
 from isaaclab.app import AppLauncher
 
@@ -54,9 +49,9 @@ parser.add_argument("--output_fps", type=int, default=50, help="The fps of the o
 parser.add_argument(
     "--robot",
     type=str,
-    choices=["g1", "hi", "pi_plus", "x2", "pi_plus_waist_shell", "pi_plus_head"],
+    choices=["g1", "hi", "pi_plus", "gp02_v2", "x2"],
     required=True,
-    help="Robot type: g1 (Unitree G1), hi (Unitree Hi), pi_plus (PI Plus), x2 (X2), pi_plus_head",
+    help="Robot type: g1 (Unitree G1), hi (Unitree Hi), pi_plus (PI Plus), gp02_v2, x2",
 )
 parser.add_argument("--no_wandb", action="store_true", help="Skip WandB upload and save NPZ locally only.")
 parser.add_argument("--save_to", type=str, default="/tmp/", help="Path to save the generated npz.")
@@ -65,6 +60,16 @@ parser.add_argument("--save_to", type=str, default="/tmp/", help="Path to save t
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
+
+# make sure local dependencies are importable without installation
+repo_root = Path(__file__).resolve().parents[1]
+whole_body_tracking_path = repo_root / "source" / "whole_body_tracking"
+if whole_body_tracking_path.exists():
+    sys.path.insert(0, str(whole_body_tracking_path))
+
+# ensure output directory exists
+output_parent = Path(args_cli.output_name).expanduser().resolve().parent
+output_parent.mkdir(parents=True, exist_ok=True)
 
 # launch omniverse app
 app_launcher = AppLauncher(args_cli)
@@ -82,58 +87,68 @@ from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.math import axis_angle_from_quat, quat_conjugate, quat_mul, quat_slerp
 
-##
-# Pre-defined configs
-##
-#from whole_body_tracking.robots.g1 import G1_CYLINDER_CFG
-from whole_body_tracking.robots.hi import HI_CFG
-from whole_body_tracking.robots.pi_plus import PI_PLUS_CFG
-from whole_body_tracking.robots.x2 import X2_CFG, X2_JOINT_NAMES
-#from whole_body_tracking.robots.pi_plus80_waist_shell import PI_PLUS80_WAIST_shell_CFG
-#from whole_body_tracking.robots.pi_plus_head import PI_PLUS_HEAD4438_CFG as PI_PLUS_HEAD_CFG
+# Robot config loader ---------------------------------------------------------
+def _build_cfg_loader(module_path: str, attr_name: str):
+    """Create a callable that imports and returns the requested robot cfg."""
 
+    def _loader():
+        try:
+            module = importlib.import_module(module_path)
+        except ModuleNotFoundError as exc:
+            msg = (
+                f"Unable to import robot config '{module_path}.{attr_name}'. "
+                "Ensure the 'whole_body_tracking' package is available."
+            )
+            raise ModuleNotFoundError(msg) from exc
+        try:
+            return getattr(module, attr_name)
+        except AttributeError as exc:
+            raise AttributeError(
+                f"Robot config attribute '{attr_name}' not found in module '{module_path}'."
+            ) from exc
 
+    return _loader
 
 # Robot configurations
 ROBOT_CONFIGS = {
-    # "g1": {
-    #     "cfg": G1_CYLINDER_CFG,
-    #     "has_header": False,
-    #     "dof_slice": None,  # Use all DOFs
-    #     "joint_names": [
-    #         "left_hip_pitch_joint",
-    #         "left_hip_roll_joint",
-    #         "left_hip_yaw_joint",
-    #         "left_knee_joint",
-    #         "left_ankle_pitch_joint",
-    #         "left_ankle_roll_joint",
-    #         "right_hip_pitch_joint",
-    #         "right_hip_roll_joint",
-    #         "right_hip_yaw_joint",
-    #         "right_knee_joint",
-    #         "right_ankle_pitch_joint",
-    #         "right_ankle_roll_joint",
-    #         "waist_yaw_joint",
-    #         "waist_roll_joint",
-    #         "waist_pitch_joint",
-    #         "left_shoulder_pitch_joint",
-    #         "left_shoulder_roll_joint",
-    #         "left_shoulder_yaw_joint",
-    #         "left_elbow_joint",
-    #         "left_wrist_roll_joint",
-    #         "left_wrist_pitch_joint",
-    #         "left_wrist_yaw_joint",
-    #         "right_shoulder_pitch_joint",
-    #         "right_shoulder_roll_joint",
-    #         "right_shoulder_yaw_joint",
-    #         "right_elbow_joint",
-    #         "right_wrist_roll_joint",
-    #         "right_wrist_pitch_joint",
-    #         "right_wrist_yaw_joint",
-    #     ]
-    # },
+    "g1": {
+        "cfg_loader": _build_cfg_loader("whole_body_tracking.robots.g1", "G1_CYLINDER_CFG"),
+        "has_header": False,
+        "dof_slice": None,  # Use all DOFs
+        "joint_names": [
+            "left_hip_pitch_joint",
+            "left_hip_roll_joint",
+            "left_hip_yaw_joint",
+            "left_knee_joint",
+            "left_ankle_pitch_joint",
+            "left_ankle_roll_joint",
+            "right_hip_pitch_joint",
+            "right_hip_roll_joint",
+            "right_hip_yaw_joint",
+            "right_knee_joint",
+            "right_ankle_pitch_joint",
+            "right_ankle_roll_joint",
+            "waist_yaw_joint",
+            "waist_roll_joint",
+            "waist_pitch_joint",
+            "left_shoulder_pitch_joint",
+            "left_shoulder_roll_joint",
+            "left_shoulder_yaw_joint",
+            "left_elbow_joint",
+            "left_wrist_roll_joint",
+            "left_wrist_pitch_joint",
+            "left_wrist_yaw_joint",
+            "right_shoulder_pitch_joint",
+            "right_shoulder_roll_joint",
+            "right_shoulder_yaw_joint",
+            "right_elbow_joint",
+            "right_wrist_roll_joint",
+            "right_wrist_pitch_joint",
+            "right_wrist_yaw_joint",
+        ]
+    },
     "hi": {
-        "cfg": HI_CFG,
+        "cfg_loader": _build_cfg_loader("whole_body_tracking.robots.hi", "HI_CFG"),
         "has_header": True,
         "dof_slice": (7, 30),  # Only take first 23 joints
         "joint_names": [
@@ -163,7 +178,7 @@ ROBOT_CONFIGS = {
         ]
     },
     "pi_plus": {
-        "cfg": PI_PLUS_CFG,
+        "cfg_loader": _build_cfg_loader("whole_body_tracking.robots.pi_plus", "PI_PLUS_CFG"),
         "has_header": True,
         "dof_slice": None,  # Use all DOFs
         "joint_names": [
@@ -191,73 +206,65 @@ ROBOT_CONFIGS = {
             "r_wrist_joint",
         ]
     },
-    "x2": {
-        "cfg": X2_CFG,
+    "gp02_v2": {
+        "cfg_loader": _build_cfg_loader("whole_body_tracking.robots.gp02_v2", "GP02_V2_CFG"),
         "has_header": True,
-        "dof_slice": None,  # Use all DOFs
-        "joint_names": X2_JOINT_NAMES,
+        "dof_slice": None,
+        "joint_names": [
+            "left_hip_pitch_joint",
+            "left_hip_roll_joint",
+            "left_hip_yaw_joint",
+            "left_knee_joint",
+            "left_ankle_pitch_joint",
+            "left_ankle_roll_joint",
+            "right_hip_pitch_joint",
+            "right_hip_roll_joint",
+            "right_hip_yaw_joint",
+            "right_knee_joint",
+            "right_ankle_pitch_joint",
+            "right_ankle_roll_joint",
+            "waist_yaw_joint",
+            "waist_roll_joint",
+            "left_shoulder_pitch_joint",
+            "left_shoulder_roll_joint",
+            "left_shoulder_yaw_joint",
+            "left_elbow_joint",
+            "right_shoulder_pitch_joint",
+            "right_shoulder_roll_joint",
+            "right_shoulder_yaw_joint",
+            "right_elbow_joint",
+        ],
     },
-    # "pi_plus_head": {
-    #     "cfg": PI_PLUS80_WAIST_shell_CFG,
-    #     "has_header": True,
-    #     "dof_slice": None,  # Use all DOFs
-    #     "joint_names": [
-    #         "l_hip_pitch_joint",
-    #         "l_hip_roll_joint",
-    #         "l_thigh_joint",
-    #         "l_calf_joint",
-    #         "l_ankle_pitch_joint",
-    #         "l_ankle_roll_joint",
-    #         "r_hip_pitch_joint",
-    #         "r_hip_roll_joint",
-    #         "r_thigh_joint",
-    #         "r_calf_joint",
-    #         "r_ankle_pitch_joint",
-    #         "r_ankle_roll_joint",
-    #         "l_shoulder_pitch_joint",
-    #         "l_shoulder_roll_joint",
-    #         "l_upper_arm_joint",
-    #         "l_elbow_joint",
-    #         "l_wrist_joint",
-    #         "r_shoulder_pitch_joint",
-    #         "r_shoulder_roll_joint",
-    #         "r_upper_arm_joint",
-    #         "r_elbow_joint",
-    #         "r_wrist_joint",
-    #         "head_yaw_joint",
-    #         "head_pitch_joint",
-    #     ]
-    # },
-    # "pi_plus_waist_shell": {
-    #     "cfg": PI_PLUS80_WAIST_shell_CFG,
-    #     "has_header": True,
-    #     "dof_slice": None,  # Use all DOFs
-    #     "joint_names": [
-    #         "l_hip_pitch_joint",
-    #         "l_hip_roll_joint",
-    #         "l_thigh_joint",
-    #         "l_calf_joint",
-    #         "l_ankle_pitch_joint",
-    #         "l_ankle_roll_joint",
-    #         "r_hip_pitch_joint",
-    #         "r_hip_roll_joint",
-    #         "r_thigh_joint",
-    #         "r_calf_joint",
-    #         "r_ankle_pitch_joint",
-    #         "r_ankle_roll_joint",
-    #         "waist_yaw_joint",
-    #         "l_shoulder_pitch_joint",
-    #         "l_shoulder_roll_joint",
-    #         "l_upper_arm_joint",
-    #         "l_elbow_joint",
-    #         "l_wrist_joint",
-    #         "r_shoulder_pitch_joint",
-    #         "r_shoulder_roll_joint",
-    #         "r_upper_arm_joint",
-    #         "r_elbow_joint",
-    #         "r_wrist_joint",
-    #     ]
-    # },
+    "x2": {
+        "cfg_loader": _build_cfg_loader("whole_body_tracking.robots.x2", "X2_CFG"),
+        "has_header": True,
+        "dof_slice": None,
+        "joint_names": [
+            "left_hip_pitch_joint",
+            "left_hip_roll_joint",
+            "left_hip_yaw_joint",
+            "left_knee_joint",
+            "left_ankle_pitch_joint",
+            "left_ankle_roll_joint",
+            "right_hip_pitch_joint",
+            "right_hip_roll_joint",
+            "right_hip_yaw_joint",
+            "right_knee_joint",
+            "right_ankle_pitch_joint",
+            "right_ankle_roll_joint",
+            "waist_yaw_joint",
+            "waist_pitch_joint",
+            "waist_roll_joint",
+            "left_shoulder_pitch_joint",
+            "left_shoulder_roll_joint",
+            "left_shoulder_yaw_joint",
+            "left_elbow_joint",
+            "right_shoulder_pitch_joint",
+            "right_shoulder_roll_joint",
+            "right_shoulder_yaw_joint",
+            "right_elbow_joint",
+        ],
+    },
 }
 
 
@@ -266,7 +273,10 @@ class ReplayMotionsSceneCfg(InteractiveSceneCfg):
     """Configuration for a replay motions scene."""
 
     # ground plane
-    ground = AssetBaseCfg(prim_path="/World/defaultGroundPlane", spawn=sim_utils.GroundPlaneCfg())
+    # disable physics material to avoid missing-prim issues when binding
+    ground = AssetBaseCfg(
+        prim_path="/World/defaultGroundPlane", spawn=sim_utils.GroundPlaneCfg(physics_material=None)
+    )
 
     # lights
     sky_light = AssetBaseCfg(
@@ -336,6 +346,21 @@ class MotionLoader:
             self.motion_dof_poss_input = motion[:, dof_slice[0]:dof_slice[1]]
         else:
             self.motion_dof_poss_input = motion[:, 7:]
+
+        # Enforce DoF width to match configured controllable joints.
+        expected_dof = len(self.robot_config["joint_names"])
+        current_dof = self.motion_dof_poss_input.shape[1]
+        if current_dof < expected_dof:
+            raise ValueError(
+                f"CSV DoF columns are fewer than expected for robot '{args_cli.robot}': "
+                f"got {current_dof}, expected {expected_dof}."
+            )
+        if current_dof > expected_dof:
+            print(
+                f"[WARN]: CSV has {current_dof} DoF columns but robot '{args_cli.robot}' expects {expected_dof}. "
+                f"Trimming to first {expected_dof} columns."
+            )
+            self.motion_dof_poss_input = self.motion_dof_poss_input[:, :expected_dof]
 
         self.input_frames = motion.shape[0]
         self.duration = (self.input_frames - 1) * self.input_dt
@@ -535,6 +560,7 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene, rob
                 np.savez(wandb_temp_file, **log)
                 
                 import wandb
+                from wandb.errors import CommError
 
                 # Extract just the filename without path and extension for artifact name
                 COLLECTION = os.path.splitext(os.path.basename(args_cli.output_name))[0]
@@ -542,19 +568,26 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene, rob
                 print(f"[INFO]: Logging motion to wandb: {COLLECTION}")
                 REGISTRY = "motions"
                 logged_artifact = run.log_artifact(artifact_or_path=wandb_temp_file, name=COLLECTION, type=REGISTRY)
-                run.link_artifact(artifact=logged_artifact, target_path=f"wandb-registry-{REGISTRY}/{COLLECTION}")
-                print(f"[INFO]: Motion saved to wandb registry: {REGISTRY}/{COLLECTION}")
+                try:
+                    run.link_artifact(artifact=logged_artifact, target_path=f"wandb-registry-{REGISTRY}/{COLLECTION}")
+                    print(f"[INFO]: Motion saved to wandb registry: {REGISTRY}/{COLLECTION}")
+                except CommError as exc:
+                    print(
+                        "[WARN]: Failed to link artifact to custom registry. "
+                        f"Skipping registry link. Details: {exc}"
+                    )
+                finally:
+                    run.finish()
             else:
                 print("[INFO]: Skipped WandB upload (--no_wandb flag used)")
-            # Set flag to exit loop
-            print("[INFO]: File saved, breaking loop...")
-            break  # Immediately break out of the loop
 
 
 def main():
     """Main function."""
     # Get robot configuration
-    robot_config = ROBOT_CONFIGS[args_cli.robot]
+    robot_config = ROBOT_CONFIGS[args_cli.robot].copy()
+    cfg_loader = robot_config.pop("cfg_loader")
+    robot_config["cfg"] = cfg_loader()
     print(f"[INFO]: Using robot configuration: {args_cli.robot}")
     
     # Load kit helper
@@ -581,5 +614,4 @@ if __name__ == "__main__":
     # run the main function
     main()
     # close sim app
-    print("[INFO]: Exiting program...")
-    exit(0)
+    simulation_app.close()

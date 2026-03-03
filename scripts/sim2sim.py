@@ -20,7 +20,6 @@ import numpy as np
 import onnx
 import onnxruntime
 import torch
-import yaml
 from scipy.spatial.transform import Rotation as R
 
 # Simulation parameters
@@ -64,12 +63,12 @@ ROBOT_CONFIGS = {
         "motion_body_index": 0,
         "observation_structure": {
             "command": 46,
-            "motion_ref_ori_b": 6,
+            "projected_gravity_b": 3,
             "base_ang_vel": 3,
             "joint_pos": 23,
             "joint_vel": 23,
-            "actions": 23
-        }
+            "actions": 23,
+        },
     },
     "pi_plus": {
         "num_actions": 22,
@@ -107,9 +106,97 @@ ROBOT_CONFIGS = {
             "base_ang_vel": 3,
             "joint_pos": 22,
             "joint_vel": 22,
-            "actions": 22
-        }
-    }
+            "actions": 22,
+        },
+    },
+    "gp02_v2": {
+        "num_actions": 22,
+        "num_obs": 119,
+        "reference_body": "pelvis",
+        "default_xml": None,
+        "joint_names": [
+            "left_hip_pitch_joint",
+            "left_hip_roll_joint",
+            "left_hip_yaw_joint",
+            "left_knee_joint",
+            "left_ankle_pitch_joint",
+            "left_ankle_roll_joint",
+            "right_hip_pitch_joint",
+            "right_hip_roll_joint",
+            "right_hip_yaw_joint",
+            "right_knee_joint",
+            "right_ankle_pitch_joint",
+            "right_ankle_roll_joint",
+            "waist_yaw_joint",
+            "waist_roll_joint",
+            "left_shoulder_pitch_joint",
+            "left_shoulder_roll_joint",
+            "left_shoulder_yaw_joint",
+            "left_elbow_joint",
+            "right_shoulder_pitch_joint",
+            "right_shoulder_roll_joint",
+            "right_shoulder_yaw_joint",
+            "right_elbow_joint",
+        ],
+        "motion_body_index": 0,
+        "observation_structure": {
+            "command": 44,
+            "motion_ref_ori_b": 6,
+            "base_ang_vel": 3,
+            "joint_pos": 22,
+            "joint_vel": 22,
+            "actions": 22,
+        },
+    },
+    "x2": {
+        "num_actions": 23,
+        "num_obs": 121,
+        "reference_body": "pelvis",
+        "default_xml": None,
+        "joint_names": [
+            "left_hip_pitch_joint",
+            "left_hip_roll_joint",
+            "left_hip_yaw_joint",
+            "left_knee_joint",
+            "left_ankle_pitch_joint",
+            "left_ankle_roll_joint",
+            "right_hip_pitch_joint",
+            "right_hip_roll_joint",
+            "right_hip_yaw_joint",
+            "right_knee_joint",
+            "right_ankle_pitch_joint",
+            "right_ankle_roll_joint",
+            "waist_yaw_joint",
+            "waist_pitch_joint",
+            "waist_roll_joint",
+            "left_shoulder_pitch_joint",
+            "left_shoulder_roll_joint",
+            "left_shoulder_yaw_joint",
+            "left_elbow_joint",
+            "right_shoulder_pitch_joint",
+            "right_shoulder_roll_joint",
+            "right_shoulder_yaw_joint",
+            "right_elbow_joint",
+        ],
+        "motion_body_index": 0,
+        "observation_structure": {
+            "command": 46,
+            "projected_gravity_b": 3,
+            "base_ang_vel": 3,
+            "joint_pos": 23,
+            "joint_vel": 23,
+            "actions": 23,
+        },
+        "obs_scales": {
+            "command": 1.0,
+            "projected_gravity_b": 1.0,
+            "base_ang_vel": 0.25,
+            "joint_pos": 1.0,
+            "joint_vel": 0.05,
+            "actions": 1.0,
+        },
+        "obs_clip": 100.0,
+    },
 }
 
 
@@ -258,28 +345,73 @@ def create_observation_hi_pi(obs, offset, motioninput, motion_ref_ori_b, omega, 
     return obs
 
 
-def run_simulation(robot_type: str, motion_file: str, xml_path: str, policy_path: str, save_json: bool = False, loop: bool = False):
+def create_observation_projected_gravity(
+    obs,
+    offset,
+    motioninput,
+    projected_gravity_b,
+    omega,
+    qpos_seq,
+    qvel_seq,
+    action_buffer,
+    joint_pos_array_seq,
+    num_actions,
+    obs_scales,
+    obs_clip,
+):
+    """Create BMIMIC-style observation with projected gravity."""
+    def _scaled_clipped(values, scale):
+        return np.clip(np.asarray(values) * scale, -obs_clip, obs_clip)
+
+    cmd_size = len(motioninput)
+    obs[offset:offset + cmd_size] = _scaled_clipped(motioninput, obs_scales["command"])
+    offset += cmd_size
+    obs[offset:offset + 3] = _scaled_clipped(projected_gravity_b, obs_scales["projected_gravity_b"])
+    offset += 3
+    obs[offset:offset + 3] = _scaled_clipped(omega, obs_scales["base_ang_vel"])
+    offset += 3
+    obs[offset:offset + num_actions] = _scaled_clipped(qpos_seq - joint_pos_array_seq, obs_scales["joint_pos"])
+    offset += num_actions
+    obs[offset:offset + num_actions] = _scaled_clipped(qvel_seq, obs_scales["joint_vel"])
+    offset += num_actions
+    obs[offset:offset + num_actions] = _scaled_clipped(action_buffer, obs_scales["actions"])
+    return obs
+
+
+def run_simulation(robot_type: str, motion_file: str | None, xml_path: str, policy_path: str, save_json: bool = False, loop: bool = False):
     """Run the sim2sim simulation."""
     config = ROBOT_CONFIGS[robot_type]
     print(f"[INFO]: Using robot configuration: {robot_type}")
     print(f"[INFO]: Actions: {config['num_actions']}, Observations: {config['num_obs']}")
     
-    # Load motion data
-    motion = np.load(motion_file)
-    motionpos = motion["body_pos_w"]
-    motionquat = motion["body_quat_w"]
-    motioninputpos = motion["joint_pos"]
-    motioninputvel = motion["joint_vel"]
-    # number of frames available across all sequences
-    num_frames = min(motioninputpos.shape[0], motioninputvel.shape[0], motionpos.shape[0], motionquat.shape[0])
-    # safe index helper (supports looping)
+    # Load motion data from NPZ if provided; otherwise use ONNX auxiliary outputs.
+    use_external_motion = motion_file is not None
+    motionpos = None
+    motionquat = None
+    motioninputpos = None
+    motioninputvel = None
+    num_frames = 1
+    if use_external_motion:
+        motion = np.load(motion_file)
+        motionpos = motion["body_pos_w"]
+        motionquat = motion["body_quat_w"]
+        motioninputpos = motion["joint_pos"]
+        motioninputvel = motion["joint_vel"]
+        # number of frames available across all sequences
+        num_frames = min(motioninputpos.shape[0], motioninputvel.shape[0], motionpos.shape[0], motionquat.shape[0])
+    else:
+        print("[INFO]: No --motion_file provided, using motion signals from ONNX outputs.")
+
+    # safe index helper (supports looping with external motion sequence)
     def frame_idx(t):
+        if not use_external_motion:
+            return t
         if loop and num_frames > 0:
             return t % num_frames
         return t if t < num_frames else num_frames - 1
     
-    # Save motion data to JSON if requested
-    if save_json:
+    # Save motion data to JSON if requested and available
+    if save_json and use_external_motion:
         motion_dict = {
             "body_pos_w": motionpos.tolist(),
             "body_quat_w": motionquat.tolist(),
@@ -306,6 +438,8 @@ def run_simulation(robot_type: str, motion_file: str, xml_path: str, policy_path
         with open(json_filename, 'w') as f:
             json.dump(motion_dict, f, indent=2)
         print(f"[INFO]: Motion data saved to: {json_filename}")
+    elif save_json:
+        print("[WARN]: --save_json is ignored without --motion_file.")
     
     # Load ONNX model and extract metadata
     model = onnx.load(policy_path)
@@ -352,14 +486,19 @@ def run_simulation(robot_type: str, motion_file: str, xml_path: str, policy_path
     
     # Load policy
     policy = onnxruntime.InferenceSession(policy_path)
+    policy_output_names = [out.name for out in policy.get_outputs()]
+    has_embedded_motion_outputs = {"joint_pos", "joint_vel", "body_quat_w"}.issubset(set(policy_output_names))
+    if not use_external_motion and not has_embedded_motion_outputs:
+        raise ValueError("Policy ONNX is missing joint_pos/joint_vel/body_quat_w outputs. Provide --motion_file instead.")
     
     action_buffer = np.zeros((num_actions,), dtype=np.float32)
     timestep = 0 
-    motioninput = np.concatenate((motioninputpos[frame_idx(timestep), :], motioninputvel[frame_idx(timestep), :]), axis=0)
-    
-    motion_body_idx = config["motion_body_index"]
-    motionposcurrent = motionpos[frame_idx(timestep), motion_body_idx, :]
-    motionquatcurrent = motionquat[frame_idx(timestep), motion_body_idx, :]
+    if use_external_motion:
+        motioninput = np.concatenate((motioninputpos[frame_idx(timestep), :], motioninputvel[frame_idx(timestep), :]), axis=0)
+        motionquatcurrent = motionquat[frame_idx(timestep), config["motion_body_index"], :]
+    else:
+        motioninput = np.concatenate((joint_pos_array_seq.copy(), np.zeros_like(joint_pos_array_seq)), axis=0)
+        motionquatcurrent = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
     
     target_dof_pos = joint_pos_array.copy()
     if robot_type == "hi":
@@ -386,43 +525,72 @@ def run_simulation(robot_type: str, motion_file: str, xml_path: str, policy_path
             if counter % control_decimation == 0:
                 # Update motion data
                 idx = frame_idx(timestep)
-                motioninput = np.concatenate((motioninputpos[idx, :], motioninputvel[idx, :]), axis=0)
-                motionquatcurrent = motionquat[idx, motion_body_idx, :]
+                if use_external_motion:
+                    motioninput = np.concatenate((motioninputpos[idx, :], motioninputvel[idx, :]), axis=0)
+                    motionquatcurrent = motionquat[idx, config["motion_body_index"], :]
                 
                 # Create observations based on robot type
                 offset = 0
-                if robot_type in ["hi", "pi_plus"]:
-                    # HI and PI Plus observation creation
-                    robot_quat_w = torch.from_numpy(quat).unsqueeze(0)
-                    q01 = quat
-                    q02 = motionquatcurrent
-                    q10 = quat_inv_np(q01)
-                    if q02 is not None:
-                        q12 = quat_mul_np(q10, q02)
-                    else:
-                        q12 = q10
-                    mat = matrix_from_quat(torch.from_numpy(q12))
-                    motion_ref_ori_b = mat[..., :2].reshape(6)
-                    
+                if robot_type in ["hi", "pi_plus", "gp02_v2", "x2"]:
                     qpos_xml = d.qpos[7:7 + num_actions]
                     qpos_seq = np.array([qpos_xml[joint_xml.index(joint)] for joint in joint_seq])
                     qvel_xml = d.qvel[6:6 + num_actions]
                     qvel_seq = np.array([qvel_xml[joint_xml.index(joint)] for joint in joint_seq])
-                    
-                    obs = create_observation_hi_pi(obs, offset, motioninput, motion_ref_ori_b, omega, qpos_seq, qvel_seq, action_buffer, joint_pos_array_seq, num_actions)
+                    if robot_type == "x2":
+                        obs = create_observation_projected_gravity(
+                            obs,
+                            offset,
+                            motioninput,
+                            gvec,
+                            omega,
+                            qpos_seq,
+                            qvel_seq,
+                            action_buffer,
+                            joint_pos_array_seq,
+                            num_actions,
+                            config["obs_scales"],
+                            config["obs_clip"],
+                        )
+                    else:
+                        q01 = quat
+                        q02 = motionquatcurrent
+                        q10 = quat_inv_np(q01)
+                        if q02 is not None:
+                            q12 = quat_mul_np(q10, q02)
+                        else:
+                            q12 = q10
+                        mat = matrix_from_quat(torch.from_numpy(q12))
+                        motion_ref_ori_b = mat[..., :2].reshape(6)
+                        obs = create_observation_hi_pi(
+                            obs, offset, motioninput, motion_ref_ori_b, omega, qpos_seq, qvel_seq, action_buffer, joint_pos_array_seq, num_actions
+                        )
                 
                 # Run policy inference
                 obs_tensor = torch.from_numpy(obs).unsqueeze(0)
-                action = policy.run(['actions'], {
+                output_values = policy.run(None, {
                     'obs': obs_tensor.numpy(),
                     'time_step': np.array([frame_idx(timestep)], dtype=np.float32).reshape(1, 1)
-                })[0]
+                })
+                output_map = {name: value for name, value in zip(policy_output_names, output_values)}
+                action = output_map["actions"]
                 
                 action = np.asarray(action).reshape(-1)
                 action_buffer = action.copy()
                 target_dof_pos = action * action_scale + joint_pos_array_seq
                 target_dof_pos = target_dof_pos.reshape(-1,)
                 target_dof_pos = np.array([target_dof_pos[joint_seq.index(joint)] for joint in joint_xml])
+
+                if not use_external_motion:
+                    joint_pos_out = np.asarray(output_map["joint_pos"]).reshape(-1)
+                    joint_vel_out = np.asarray(output_map["joint_vel"]).reshape(-1)
+                    motioninput = np.concatenate((joint_pos_out[:num_actions], joint_vel_out[:num_actions]), axis=0)
+                    body_quat_out = np.asarray(output_map["body_quat_w"])
+                    if body_quat_out.ndim == 3:
+                        body_quat_out = body_quat_out[0]
+                    if body_quat_out.ndim == 2 and body_quat_out.shape[0] > config["motion_body_index"]:
+                        motionquatcurrent = body_quat_out[config["motion_body_index"], :4]
+                    else:
+                        motionquatcurrent = body_quat_out.reshape(-1)[:4]
                 
                 # advance time step; if not looping and超过序列则保持在末帧
                 if loop or timestep + 1 < num_frames:
@@ -437,10 +605,19 @@ def run_simulation(robot_type: str, motion_file: str, xml_path: str, policy_path
 
 def main():
     parser = argparse.ArgumentParser(description="Unified sim2sim script for multiple robots.")
-    parser.add_argument("--robot", type=str, choices=["hi", "pi_plus"], required=True,
-                        help="Robot type:  hi (Hi), pi_plus (PI Plus)")
-    parser.add_argument("--motion_file", type=str, required=True, 
-                        help="Path to the motion NPZ file")
+    parser.add_argument(
+        "--robot",
+        type=str,
+        choices=list(ROBOT_CONFIGS.keys()),
+        required=True,
+        help="Robot type: " + ", ".join(list(ROBOT_CONFIGS.keys())),
+    )
+    parser.add_argument(
+        "--motion_file",
+        type=str,
+        default=None,
+        help="Path to the motion NPZ file. Optional when motion signals are embedded in ONNX outputs.",
+    )
     parser.add_argument("--xml_path", type=str, required=True,
                         help="Path to the robot XML file")
     parser.add_argument("--policy_path", type=str, required=True,
@@ -452,10 +629,8 @@ def main():
     
     args = parser.parse_args()
     
-    # All parameters are now required, so no additional validation needed
-    
     print(f"[INFO]: Robot: {args.robot}")
-    print(f"[INFO]: Motion file: {args.motion_file}")
+    print(f"[INFO]: Motion file: {args.motion_file if args.motion_file else 'embedded in ONNX'}")
     print(f"[INFO]: XML path: {args.xml_path}")
     print(f"[INFO]: Policy path: {args.policy_path}")
     

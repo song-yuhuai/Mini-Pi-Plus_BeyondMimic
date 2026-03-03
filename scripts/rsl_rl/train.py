@@ -8,12 +8,19 @@
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import pathlib
 import sys
 
 from isaaclab.app import AppLauncher
 
 # local imports
 import cli_args  # isort: skip
+
+# Ensure local package import works when running script from repo root.
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+WHOLE_BODY_TRACKING_PATH = REPO_ROOT / "source" / "whole_body_tracking"
+if WHOLE_BODY_TRACKING_PATH.exists():
+    sys.path.insert(0, str(WHOLE_BODY_TRACKING_PATH))
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
@@ -85,7 +92,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg.max_iterations = (
         args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg.max_iterations
     )
-    env_cfg.commands.motion.motion_file = args_cli.motion_file if args_cli.motion_file else "source/motion/hightorque/hi/npz/hi_cut_T_pos.npz"
+    if args_cli.motion_file:
+        env_cfg.commands.motion.motion_file = args_cli.motion_file
+    else:
+        task_name = (args_cli.task or "").lower()
+        if "tracking-stair-x2" in task_name:
+            env_cfg.commands.motion.motion_file = "source/motion/x2/npz/step_low_far.npz"
+        else:
+            env_cfg.commands.motion.motion_file = "source/motion/hightorque/hi/npz/hi_cut_T_pos.npz"
+        print(f"[INFO] Auto-selected motion file: {env_cfg.commands.motion.motion_file}")
 
     # set the environment seed
     # note: certain randomizations occur in the environment initialization so we set the seed here

@@ -9,27 +9,27 @@
     # For PI Plus robot with local file:
     python scripts/replay_npz.py --robot pi_plus --motion_file source/motion/hightorque/pi_plus/npz/pi_plus_dance1_subject2.npz
 """
-# For X2 robot with local file:
-    # python scripts/replay_npz.py --robot x2 --motion_file source/motion/hightorque/x2/npz/x2_dance1_subject2.npz
-
 
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import pathlib
+import sys
 import numpy as np
 import torch
 
 from isaaclab.app import AppLauncher
 
+# Ensure local package import works when running script from repo root.
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
+WHOLE_BODY_TRACKING_PATH = REPO_ROOT / "source" / "whole_body_tracking"
+if WHOLE_BODY_TRACKING_PATH.exists():
+    sys.path.insert(0, str(WHOLE_BODY_TRACKING_PATH))
+
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Replay converted motions.")
-parser.add_argument(
-    "--robot",
-    type=str,
-    choices=["hi", "pi_plus", "x2"],
-    required=True,
-    help="Robot type: hi (Hi), pi_plus (PI Plus), x2 (X2)",
-)
+parser.add_argument("--robot", type=str, choices=["hi", "pi_plus", "gp02_v2", "x2"], required=True,
+                   help="Robot type: hi (Hi), pi_plus (PI Plus), gp02_v2, x2")
 parser.add_argument("--registry_name", type=str, help="The name of the wand registry.")
 parser.add_argument("--motion_file", type=str, help="Local motion NPZ file path")
 
@@ -56,13 +56,9 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 ##
 from whole_body_tracking.robots.hi import HI_CFG
 from whole_body_tracking.robots.pi_plus import PI_PLUS_CFG
+from whole_body_tracking.robots.gp02_v2 import GP02_V2_CFG
 from whole_body_tracking.robots.x2 import X2_CFG
 from whole_body_tracking.tasks.tracking.mdp import MotionLoader
-
-# Chassis box settings (size is full dimensions in meters).
-CHASSIS_SIZE = (1.0, 1.0, 0.19)
-CHASSIS_OFFSET_X = 0.85
-CHASSIS_OFFSET_Y = -0.5
 
 # Robot configurations
 ROBOT_CONFIGS = {
@@ -73,6 +69,10 @@ ROBOT_CONFIGS = {
     "pi_plus": {
         "cfg": PI_PLUS_CFG,
         "name": "PI Plus"
+    },
+    "gp02_v2": {
+        "cfg": GP02_V2_CFG,
+        "name": "GP02_V2"
     },
     "x2": {
         "cfg": X2_CFG,
@@ -93,17 +93,6 @@ class ReplayMotionsSceneCfg(InteractiveSceneCfg):
             intensity=750.0,
             texture_file=f"{ISAAC_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
         ),
-    )
-
-    chassis_box = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/ChassisBox",
-        spawn=sim_utils.CuboidCfg(
-            # IsaacLab CuboidCfg.size uses full dimensions, not half-extents.
-            size=CHASSIS_SIZE,
-            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
-        ),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(CHASSIS_OFFSET_X, CHASSIS_OFFSET_Y, CHASSIS_SIZE[2] / 2.0)),
     )
 
     # articulation (will be set dynamically based on robot type)

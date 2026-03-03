@@ -8,6 +8,7 @@ import torch
 from torch import nn
 
 import onnx
+import yaml
 
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab_rl.rsl_rl.exporter import _OnnxPolicyExporter
@@ -119,14 +120,25 @@ def list_to_csv_str(arr, *, decimals: int = 3, delimiter: str = ",") -> str:
     )
 
 
-def attach_onnx_metadata(env: ManagerBasedRLEnv, run_path: str, path: str, filename="policy.onnx") -> None:
+def attach_onnx_metadata(
+    env: ManagerBasedRLEnv, run_path: str, path: str, filename="policy.onnx", yaml_path: str | None = None
+) -> None:
     onnx_path = os.path.join(path, filename)
+    robot_data = env.scene["robot"].data
+    default_joint_pos = getattr(robot_data, "default_joint_pos_nominal", None)
+    if default_joint_pos is None:
+        default_joint_pos = getattr(robot_data, "default_joint_pos", None)
+    if default_joint_pos is None:
+        raise AttributeError("ArticulationData has neither 'default_joint_pos_nominal' nor 'default_joint_pos'.")
+    if hasattr(default_joint_pos, "dim") and default_joint_pos.dim() > 1:
+        default_joint_pos = default_joint_pos[0]
+
     metadata = {
         "run_path": run_path,
-        "joint_names": env.scene["robot"].data.joint_names,
-        "joint_stiffness": env.scene["robot"].data.joint_stiffness[0].cpu().tolist(),
-        "joint_damping": env.scene["robot"].data.joint_damping[0].cpu().tolist(),
-        "default_joint_pos": env.scene["robot"].data.default_joint_pos_nominal.cpu().tolist(),
+        "joint_names": robot_data.joint_names,
+        "joint_stiffness": robot_data.joint_stiffness[0].cpu().tolist(),
+        "joint_damping": robot_data.joint_damping[0].cpu().tolist(),
+        "default_joint_pos": default_joint_pos.cpu().tolist(),
         "command_names": env.command_manager.active_terms,
         "observation_names": env.observation_manager.active_terms["policy"],
         "action_scale": env.action_manager.get_term("joint_pos")._scale[0].cpu().tolist(),
@@ -143,3 +155,8 @@ def attach_onnx_metadata(env: ManagerBasedRLEnv, run_path: str, path: str, filen
         model.metadata_props.append(entry)
 
     onnx.save(model, onnx_path)
+
+    if yaml_path:
+        os.makedirs(os.path.dirname(yaml_path), exist_ok=True)
+        with open(yaml_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(metadata, f, sort_keys=False)
