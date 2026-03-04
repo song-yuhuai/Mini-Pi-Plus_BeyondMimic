@@ -348,11 +348,11 @@ class MotionCommand(CommandTerm):
             phase = 0.0
             if self.phase_step_count > 1:
                 phase = float(first_motion_idx - self.phase_start_count) / float(self.phase_step_count - 1)
-            print(
-                "[MotionCommand] deterministic reset: "
-                f"motion_idx={first_motion_idx} phase={phase:.4f} "
-                f"phase_end_count={self.phase_end_count} adaptive_sampling_skipped=True"
-            )
+            # print(
+            #     "[MotionCommand] deterministic reset: "
+            #     f"motion_idx={first_motion_idx} phase={phase:.4f} "
+            #     f"phase_end_count={self.phase_end_count} adaptive_sampling_skipped=True"
+            # )
         else:
             self._adaptive_sampling(env_ids)
 
