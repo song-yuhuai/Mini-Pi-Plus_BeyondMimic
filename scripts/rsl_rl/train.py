@@ -34,6 +34,18 @@ parser.add_argument("--seed", type=int, default=None, help="Seed used for the en
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
 parser.add_argument("--registry_name", type=str, required=False, help="The name of the wand registry.")
 parser.add_argument("--log_dir_path", type=str, default=None, help="Custom log directory path. If provided, this will be used instead of auto-generated path.")
+parser.add_argument(
+    "--deterministic_start",
+    action="store_true",
+    default=False,
+    help="Disable random/adaptive motion start sampling and always reset at start_frame.",
+)
+parser.add_argument(
+    "--start_frame",
+    type=int,
+    default=0,
+    help="Fixed motion frame index used when --deterministic_start is enabled.",
+)
 
 
 # append RSL-RL cli arguments
@@ -94,7 +106,23 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     )
     if args_cli.motion_file:
         env_cfg.commands.motion.motion_file = args_cli.motion_file
-    else:
+        
+    env_cfg.commands.motion.deterministic_start = args_cli.deterministic_start
+    env_cfg.commands.motion.start_frame = max(0, args_cli.start_frame)
+
+    if args_cli.deterministic_start:
+        env_cfg.commands.motion.phase_start_count = env_cfg.commands.motion.start_frame
+
+    print(
+        "[INFO] Training motion start config: "
+        f"deterministic_start={env_cfg.commands.motion.deterministic_start}, "
+        f"start_frame={env_cfg.commands.motion.start_frame}, "
+        f"phase_start_count={env_cfg.commands.motion.phase_start_count}, "
+        f"phase_end_count={env_cfg.commands.motion.phase_end_count}"
+    )
+
+    if not args_cli.motion_file:
+
         task_name = (args_cli.task or "").lower()
         if "tracking-stair-x2" in task_name:
             env_cfg.commands.motion.motion_file = "source/motion/x2/npz/step_low_far.npz"

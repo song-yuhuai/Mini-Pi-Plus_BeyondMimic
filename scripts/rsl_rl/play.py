@@ -35,9 +35,15 @@ parser.add_argument(
 )
 parser.add_argument(
     "--deterministic_start",
-    action=argparse.BooleanOptionalAction,
-    default=True,
-    help="For playback only: force motion command resets to start at frame/phase index 0.",
+    action="store_true",
+    default=False,
+    help="Disable random/adaptive motion start sampling and always reset at start_frame.",
+)
+parser.add_argument(
+    "--start_frame",
+    type=int,
+    default=0,
+    help="Fixed motion frame index used when --deterministic_start is enabled.",
 )
 # parser.add_argument("--motion_file", type=str, required=True, help="Path to the motion file.")
 # parser.add_argument("--resume_path", type=str, required=True, help="Path to the trained model checkpoint.")
@@ -283,12 +289,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # Playback-only deterministic motion start override.
     env_cfg.commands.motion.deterministic_start = args_cli.deterministic_start
+    env_cfg.commands.motion.start_frame = max(0, args_cli.start_frame)
     if args_cli.deterministic_start:
-        env_cfg.commands.motion.phase_start_count = 0
+        env_cfg.commands.motion.phase_start_count = env_cfg.commands.motion.start_frame
 
     print(
         "[INFO] Playback motion start config: "
         f"deterministic_start={env_cfg.commands.motion.deterministic_start}, "
+        f"start_frame={env_cfg.commands.motion.start_frame}, "
         f"phase_start_count={env_cfg.commands.motion.phase_start_count}, "
         f"phase_end_count={env_cfg.commands.motion.phase_end_count}"
     )

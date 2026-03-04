@@ -94,6 +94,7 @@ class MotionCommand(CommandTerm):
                 f"motion_length={self.motion.time_step_total}."
             )
         self.phase_step_count = self.phase_end_count - self.phase_start_count + 1
+        self.start_frame = min(max(0, int(self.cfg.start_frame)), self.phase_end_count)
 
         motion_joint_count = self.motion.joint_pos.shape[1]
         selected_joint_count = len(self.joint_ids)
@@ -340,8 +341,18 @@ class MotionCommand(CommandTerm):
             return
 
         if self.cfg.deterministic_start:
-            self.time_steps[env_ids] = self.phase_start_count
+            self.time_steps[env_ids] = self.start_frame
             self._current_bin_failed.zero_()
+            first_env_id = int(env_ids[0]) if not isinstance(env_ids, torch.Tensor) else int(env_ids[0].item())
+            first_motion_idx = int(self.time_steps[first_env_id].item())
+            phase = 0.0
+            if self.phase_step_count > 1:
+                phase = float(first_motion_idx - self.phase_start_count) / float(self.phase_step_count - 1)
+            print(
+                "[MotionCommand] deterministic reset: "
+                f"motion_idx={first_motion_idx} phase={phase:.4f} "
+                f"phase_end_count={self.phase_end_count} adaptive_sampling_skipped=True"
+            )
         else:
             self._adaptive_sampling(env_ids)
 
@@ -648,3 +659,6 @@ class MotionCommandCfg(CommandTermCfg):
     # If true, every command resample starts deterministically at phase_start_count.
     # Useful for playback/evaluation debugging; keep disabled for training by default.
     deterministic_start: bool = False
+
+    # Fixed motion frame to use when deterministic_start is enabled.
+    start_frame: int = 0
