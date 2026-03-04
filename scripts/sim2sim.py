@@ -226,11 +226,11 @@ def get_obs(data):
     """Extracts an observation from the mujoco data structure"""
     qpos = data.qpos.astype(np.double)
     dq = data.qvel.astype(np.double)
-    quat = data.sensor("orientation").data[[0, 1, 2, 3]].astype(np.double)
+    quat = data.sensor("body-orientation").data[[0, 1, 2, 3]].astype(np.double)
     
     r = R.from_quat(quat)
     v = r.apply(data.qvel[:3], inverse=True).astype(np.double)
-    omega = data.sensor("angular-velocity").data.astype(np.double)
+    omega = data.sensor("body-angular-velocity").data.astype(np.double)
     gvec = r.apply(np.array([0.0, 0.0, -1.0]), inverse=True).astype(np.double)
     state_tau = data.qfrc_actuator.astype(np.double) - data.qfrc_bias.astype(np.double)
 
