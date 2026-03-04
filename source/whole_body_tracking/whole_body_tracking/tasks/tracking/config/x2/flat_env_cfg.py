@@ -83,7 +83,7 @@ class X2StairEnvCfg(TrackingEnvCfg):
 
         # Mimic phase window used by X2 get-up configs.
         self.commands.motion.phase_start_count = 0
-        self.commands.motion.phase_end_count = 310
+        self.commands.motion.phase_end_count = 3600
 
         # Single stair block for one-step-up motions.
         # Height = 0.15m, top surface at z = 0.15.

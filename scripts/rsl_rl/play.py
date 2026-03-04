@@ -27,6 +27,18 @@ parser.add_argument(
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--motion_file", type=str, default=None, help="Path to the motion file.")
+parser.add_argument(
+    "--debug_resets",
+    action="store_true",
+    default=False,
+    help="Print reset diagnostics (reasons and key states) whenever an environment resets.",
+)
+parser.add_argument(
+    "--deterministic_start",
+    action=argparse.BooleanOptionalAction,
+    default=True,
+    help="For playback only: force motion command resets to start at frame/phase index 0.",
+)
 # parser.add_argument("--motion_file", type=str, required=True, help="Path to the motion file.")
 # parser.add_argument("--resume_path", type=str, required=True, help="Path to the trained model checkpoint.")
 
@@ -69,6 +81,156 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 # Import extensions to set up environment tasks
 import whole_body_tracking.tasks  # noqa: F401
 from whole_body_tracking.utils.exporter import attach_onnx_metadata, export_motion_policy_as_onnx
+
+
+def _tensor_to_bool_tensor(value, device: torch.device) -> torch.Tensor | None:
+    """Convert an unknown reason mask object into a 1-D bool tensor when possible."""
+    if isinstance(value, torch.Tensor):
+        if value.ndim == 0:
+            return value.bool().unsqueeze(0)
+        return value.bool().reshape(-1)
+    if isinstance(value, (list, tuple)) and len(value) > 0:
+        try:
+            return torch.tensor(value, device=device, dtype=torch.bool).reshape(-1)
+        except Exception:
+            return None
+    return None
+
+
+def _safe_quat_to_rpy(quat_wxyz: torch.Tensor) -> torch.Tensor:
+    """Convert quaternion (w, x, y, z) to roll/pitch/yaw in radians."""
+    w, x, y, z = quat_wxyz.unbind(-1)
+    sinr_cosp = 2.0 * (w * x + y * z)
+    cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
+    roll = torch.atan2(sinr_cosp, cosr_cosp)
+
+    sinp = 2.0 * (w * y - z * x)
+    pitch = torch.asin(torch.clamp(sinp, -1.0, 1.0))
+
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+    yaw = torch.atan2(siny_cosp, cosy_cosp)
+    return torch.stack((roll, pitch, yaw), dim=-1)
+
+
+def _collect_reset_reasons(unwrapped_env, done_mask: torch.Tensor) -> tuple[dict[int, list[str]], dict[str, int]]:
+    """Collect per-environment reset reasons from termination manager internals when available."""
+    device = done_mask.device
+    done_ids = torch.where(done_mask)[0]
+    reasons_by_env = {int(i): [] for i in done_ids.tolist()}
+    reason_counts: dict[str, int] = {}
+
+    termination_manager = getattr(unwrapped_env, "termination_manager", None)
+    if termination_manager is None:
+        return reasons_by_env, reason_counts
+
+    reason_map = getattr(termination_manager, "_term_dones", None)
+    if not isinstance(reason_map, dict):
+        return reasons_by_env, reason_counts
+
+    for reason_name, reason_mask in reason_map.items():
+        mask = _tensor_to_bool_tensor(reason_mask, device)
+        if mask is None or mask.numel() == 0:
+            continue
+        for env_id in done_ids.tolist():
+            if env_id < mask.numel() and bool(mask[env_id].item()):
+                reasons_by_env[int(env_id)].append(str(reason_name))
+                reason_counts[str(reason_name)] = reason_counts.get(str(reason_name), 0) + 1
+
+    return reasons_by_env, reason_counts
+
+
+def _print_reset_debug(unwrapped_env, done_mask: torch.Tensor, infos: dict | None, global_step: int):
+    """Print one debug line per reset with reason and key state snapshots."""
+    if done_mask.ndim > 1:
+        done_mask = done_mask.reshape(-1)
+    done_mask = done_mask.bool()
+    done_ids = torch.where(done_mask)[0]
+    if len(done_ids) == 0:
+        return
+
+    reasons_by_env, reason_counts = _collect_reset_reasons(unwrapped_env, done_mask)
+    if not reason_counts:
+        reason_counts = {"done": int(len(done_ids))}
+
+    robot = None
+    try:
+        robot = unwrapped_env.scene["robot"]
+    except Exception:
+        robot = None
+
+    contact_sensor = None
+    try:
+        contact_sensor = unwrapped_env.scene["contact_forces"]
+    except Exception:
+        contact_sensor = None
+
+    motion_term = None
+    command_manager = getattr(unwrapped_env, "command_manager", None)
+    if command_manager is not None and hasattr(command_manager, "get_term"):
+        try:
+            motion_term = command_manager.get_term("motion")
+        except Exception:
+            motion_term = None
+
+    for env_id_tensor in done_ids:
+        env_id = int(env_id_tensor.item())
+        episode_step = None
+        if hasattr(unwrapped_env, "episode_length_buf"):
+            try:
+                episode_step = int(unwrapped_env.episode_length_buf[env_id].item())
+            except Exception:
+                episode_step = None
+
+        reason_list = reasons_by_env.get(env_id, [])
+        if not reason_list:
+            reason_list = ["done"]
+
+        base_pos = "n/a"
+        base_rpy = "n/a"
+        base_vel = "n/a"
+        if robot is not None:
+            try:
+                pos = robot.data.root_pos_w[env_id]
+                quat = robot.data.root_quat_w[env_id]
+                lin_vel = robot.data.root_lin_vel_w[env_id]
+                ang_vel = robot.data.root_ang_vel_w[env_id]
+                rpy = _safe_quat_to_rpy(quat)
+                base_pos = f"({pos[0]:+.3f},{pos[1]:+.3f},{pos[2]:+.3f})"
+                base_rpy = f"({rpy[0]:+.3f},{rpy[1]:+.3f},{rpy[2]:+.3f})"
+                base_vel = (
+                    f"lin=({lin_vel[0]:+.3f},{lin_vel[1]:+.3f},{lin_vel[2]:+.3f})/"
+                    f"ang=({ang_vel[0]:+.3f},{ang_vel[1]:+.3f},{ang_vel[2]:+.3f})"
+                )
+            except Exception:
+                pass
+
+        contacts = "n/a"
+        if contact_sensor is not None:
+            try:
+                net_forces = contact_sensor.data.net_forces_w[env_id]
+                norms = torch.norm(net_forces, dim=-1)
+                contacts = f"active>1N={int((norms > 1.0).sum().item())},max={float(norms.max().item()):.2f}N"
+            except Exception:
+                pass
+
+        motion_idx = "n/a"
+        start_idx = "n/a"
+        if motion_term is not None and hasattr(motion_term, "time_steps"):
+            try:
+                cur_idx = int(motion_term.time_steps[env_id].item())
+                start_idx = int(getattr(motion_term, "phase_start_count", 0))
+                end_idx = int(getattr(motion_term, "phase_end_count", -1))
+                motion_idx = f"{cur_idx}/{end_idx}"
+            except Exception:
+                pass
+
+        print(
+            f"[RESET] env={env_id} step={global_step} episode_step={episode_step} "
+            f"reasons={reason_list} reason_counts={reason_counts} "
+            f"base_pos={base_pos} base_rpy={base_rpy} base_vel={base_vel} "
+            f"contacts={contacts} motion_idx={motion_idx} phase_start={start_idx}"
+        )
 
 
 @hydra_task_config(args_cli.task, "rsl_rl_cfg_entry_point")
@@ -118,6 +280,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     if args_cli.motion_file is not None:
         env_cfg.commands.motion.motion_file = args_cli.motion_file
+
+    # Playback-only deterministic motion start override.
+    env_cfg.commands.motion.deterministic_start = args_cli.deterministic_start
+    if args_cli.deterministic_start:
+        env_cfg.commands.motion.phase_start_count = 0
+
+    print(
+        "[INFO] Playback motion start config: "
+        f"deterministic_start={env_cfg.commands.motion.deterministic_start}, "
+        f"phase_start_count={env_cfg.commands.motion.phase_start_count}, "
+        f"phase_end_count={env_cfg.commands.motion.phase_end_count}"
+    )
 
     print(f"[INFO] Loading experiment from directory: {log_root_path}")
     resume_path = None
@@ -190,6 +364,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # reset environment
     obs, _ = env.get_observations()
     timestep = 0
+    global_step = 0
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
@@ -197,7 +372,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # agent stepping
             actions = policy(obs)
             # env stepping
-            obs, _, _, _ = env.step(actions)
+            obs, _, dones, infos = env.step(actions)
+            global_step += 1
+            if args_cli.debug_resets:
+                _print_reset_debug(env.unwrapped, dones, infos, global_step)
         if args_cli.video:
             timestep += 1
             # Exit the play loop after recording one video
