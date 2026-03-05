@@ -480,7 +480,7 @@ class TrackingEnvCfg(ManagerBasedRLEnvCfg):
         """
         # 通用设置
         self.decimation = 4                   # 控制频率抽取率 (仿真50Hz → 控制12.5Hz)
-        self.episode_length_s = 120.0          # Episode时长(s)
+        self.episode_length_s = 100.0          # Episode时长(s)
         
         # 仿真设置
         self.sim.dt = 0.005                   # 仿真时间步长(s) = 200Hz
