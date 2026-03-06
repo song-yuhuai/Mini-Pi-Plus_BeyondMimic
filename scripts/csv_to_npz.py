@@ -316,7 +316,12 @@ class MotionLoader:
 
     def _load_motion(self):
         """Loads the motion from the csv file."""
-        has_header = self.robot_config["has_header"]
+        has_header = self._detect_has_header()
+        if has_header != self.robot_config["has_header"]:
+            print(
+                f"[WARN]: Header detection for '{self.motion_file}' is {has_header}, "
+                f"overriding default robot setting ({self.robot_config['has_header']})."
+            )
         
         if self.frame_range is None:
             skip_rows = 1 if has_header else 0
@@ -356,15 +361,46 @@ class MotionLoader:
                 f"got {current_dof}, expected {expected_dof}."
             )
         if current_dof > expected_dof:
-            print(
-                f"[WARN]: CSV has {current_dof} DoF columns but robot '{args_cli.robot}' expects {expected_dof}. "
-                f"Trimming to first {expected_dof} columns."
+            self.motion_dof_poss_input = self._resolve_extra_dofs(
+                self.motion_dof_poss_input, current_dof, expected_dof
             )
-            self.motion_dof_poss_input = self.motion_dof_poss_input[:, :expected_dof]
 
         self.input_frames = motion.shape[0]
         self.duration = (self.input_frames - 1) * self.input_dt
         print(f"Motion loaded ({self.motion_file}), duration: {self.duration} sec, frames: {self.input_frames}")
+
+    def _detect_has_header(self) -> bool:
+        """Returns True if the first row appears to be a non-numeric header."""
+        with open(self.motion_file, "r", encoding="utf-8") as f:
+            first_line = f.readline().strip()
+        if not first_line:
+            return False
+        first_cell = first_line.split(",")[0].strip()
+        try:
+            float(first_cell)
+            return False
+        except ValueError:
+            return True
+
+    def _resolve_extra_dofs(self, dof_tensor: torch.Tensor, current_dof: int, expected_dof: int) -> torch.Tensor:
+        """Maps known CSV layouts to the expected DoF layout; falls back to leading trim."""
+        if args_cli.robot == "x2" and current_dof == 29 and expected_dof == 23:
+            # 29-DoF X2 CSV layout includes 3 wrist joints per arm:
+            # [ ... left_elbow, left_wrist_roll, left_wrist_pitch, left_wrist_yaw,
+            #   right_shoulder_pitch, right_shoulder_roll, right_shoulder_yaw, right_elbow, ... ]
+            # The 23-DoF training layout excludes wrists; keep right-arm indices aligned explicitly.
+            remap_idx = list(range(19)) + [22, 23, 24, 25]
+            print(
+                "[WARN]: CSV has 29 DoF for x2 while training expects 23. "
+                "Applying x2 29->23 remap (drop wrist joints) instead of naive truncation."
+            )
+            return dof_tensor[:, remap_idx]
+
+        print(
+            f"[WARN]: CSV has {current_dof} DoF columns but robot '{args_cli.robot}' expects {expected_dof}. "
+            f"Trimming to first {expected_dof} columns."
+        )
+        return dof_tensor[:, :expected_dof]
 
     def _interpolate_motion(self):
         """Interpolates the motion to the output fps."""

@@ -83,7 +83,7 @@ class X2StairEnvCfg(TrackingEnvCfg):
 
         # Mimic phase window used by X2 get-up configs.
         self.commands.motion.phase_start_count = 0
-        self.commands.motion.phase_end_count = -1
+        self.commands.motion.phase_end_count = 310
 
         # Single stair block for one-step-up motions.
         # Height = 0.15m, top surface at z = 0.15.
@@ -211,19 +211,3 @@ class X2FlatEnvCfg(X2StairEnvCfg):
 
         # Explicitly enforce flat terrain.
         self.scene.terrain.terrain_type = "plane"
-
-
-@configclass
-class X2FlatPlayEnvCfg(X2FlatEnvCfg):
-    """Play-only X2 flat config with deterministic resets from the first motion frame."""
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.commands.motion.phase_start_count = 0
-        self.commands.motion.phase_end_count = -1
-        self.commands.motion.fixed_phase_reset = True
-
-        # Keep replay stable: disable early-failure terminations during play.
-        self.terminations.anchor_pos = None
-        self.terminations.anchor_ori = None
-        self.terminations.ee_body_pos = None

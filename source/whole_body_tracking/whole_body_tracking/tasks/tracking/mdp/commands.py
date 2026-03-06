@@ -338,7 +338,10 @@ class MotionCommand(CommandTerm):
     def _resample_command(self, env_ids: Sequence[int]):
         if len(env_ids) == 0:
             return
-        self._adaptive_sampling(env_ids)
+        if self.cfg.fixed_phase_reset:
+            self.time_steps[env_ids] = self.phase_start_count
+        else:
+            self._adaptive_sampling(env_ids)
 
         root_pos = self.body_pos_w[:, 0].clone()
         root_ori = self.body_quat_w[:, 0].clone()
@@ -639,3 +642,4 @@ class MotionCommandCfg(CommandTermCfg):
     # Optional phase window for get-up style mimic clips.
     phase_start_count: int = 0
     phase_end_count: int = -1
+    fixed_phase_reset: bool = False

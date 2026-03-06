@@ -64,6 +64,7 @@
   </asset>
 
   <worldbody>
+    <geom name="floor" type="plane" pos="0 0 0" size="0 0 0.05" rgba="0.9 0.9 0.9 1" friction="1.0 0.005 0.0001"/>
     <body name="pelvis" pos="0 0 0.68" euler="0 0 0" childclass="x2">
       <light name="tracking" mode="trackcom" pos="0 0 2"/>
       <freejoint name="floating_base_joint"/>
