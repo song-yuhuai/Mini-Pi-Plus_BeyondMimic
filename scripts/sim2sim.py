@@ -23,9 +23,10 @@ import torch
 from scipy.spatial.transform import Rotation as R
 
 # Simulation parameters
-simulation_duration = 300.0
+simulation_duration = 3000.0
 simulation_dt = 0.002
 control_decimation = 10
+render_decimation = 5
 
 # Robot configurations
 ROBOT_CONFIGS = {
@@ -227,8 +228,10 @@ def get_obs(data):
     qpos = data.qpos.astype(np.double)
     dq = data.qvel.astype(np.double)
     quat = data.sensor("body-orientation").data[[0, 1, 2, 3]].astype(np.double)
-    
-    r = R.from_quat(quat)
+
+    # MuJoCo framequat is [w, x, y, z], while SciPy expects [x, y, z, w].
+    quat_xyzw = np.array([quat[1], quat[2], quat[3], quat[0]], dtype=np.double)
+    r = R.from_quat(quat_xyzw)
     v = r.apply(data.qvel[:3], inverse=True).astype(np.double)
     omega = data.sensor("body-angular-velocity").data.astype(np.double)
     gvec = r.apply(np.array([0.0, 0.0, -1.0]), inverse=True).astype(np.double)
@@ -596,11 +599,12 @@ def run_simulation(robot_type: str, motion_file: str | None, xml_path: str, poli
                 if loop or timestep + 1 < num_frames:
                     timestep += 1
 
-            viewer.sync()
+            if counter % render_decimation == 0:
+                viewer.sync()
 
-            time_until_next_step = m.opt.timestep - (time.time() - step_start)
-            if time_until_next_step > 0:
-                time.sleep(time_until_next_step)
+            # time_until_next_step = m.opt.timestep - (time.time() - step_start)
+            # if time_until_next_step > 0:
+            #     time.sleep(time_until_next_step)
 
 
 def main():
