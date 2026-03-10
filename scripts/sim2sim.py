@@ -149,8 +149,8 @@ ROBOT_CONFIGS = {
         },
     },
     "x2": {
-        "num_actions": 23,
-        "num_obs": 121,
+        "num_actions": 29,
+        "num_obs": 151,
         "reference_body": "pelvis",
         "default_xml": None,
         "joint_names": [
@@ -173,19 +173,25 @@ ROBOT_CONFIGS = {
             "left_shoulder_roll_joint",
             "left_shoulder_yaw_joint",
             "left_elbow_joint",
+            "left_wrist_yaw_joint",
+            "left_wrist_pitch_joint",
+            "left_wrist_roll_joint",
             "right_shoulder_pitch_joint",
             "right_shoulder_roll_joint",
             "right_shoulder_yaw_joint",
             "right_elbow_joint",
+            "right_wrist_yaw_joint",
+            "right_wrist_pitch_joint",
+            "right_wrist_roll_joint",
         ],
         "motion_body_index": 0,
         "observation_structure": {
-            "command": 46,
+            "command": 58,
             "projected_gravity_b": 3,
             "base_ang_vel": 3,
-            "joint_pos": 23,
-            "joint_vel": 23,
-            "actions": 23,
+            "joint_pos": 29,
+            "joint_vel": 29,
+            "actions": 29,
         },
         "obs_scales": {
             "command": 1.0,
@@ -380,7 +386,15 @@ def create_observation_projected_gravity(
     return obs
 
 
-def run_simulation(robot_type: str, motion_file: str | None, xml_path: str, policy_path: str, save_json: bool = False, loop: bool = False):
+def run_simulation(
+    robot_type: str,
+    motion_file: str | None,
+    xml_path: str,
+    policy_path: str,
+    save_json: bool = False,
+    loop: bool = False,
+    render_every: int = 10,
+):
     """Run the sim2sim simulation."""
     config = ROBOT_CONFIGS[robot_type]
     print(f"[INFO]: Using robot configuration: {robot_type}")
@@ -512,6 +526,8 @@ def run_simulation(robot_type: str, motion_file: str | None, xml_path: str, poli
     if body_id == -1:
         raise ValueError(f"Body {body_name} not found in model")
 
+    render_every = max(1, int(render_every))
+
     with mujoco.viewer.launch_passive(m, d) as viewer:
         start = time.time()
         while viewer.is_running() and time.time() - start < simulation_duration:
@@ -598,7 +614,8 @@ def run_simulation(robot_type: str, motion_file: str | None, xml_path: str, poli
                 if loop or timestep + 1 < num_frames:
                     timestep += 1
 
-            viewer.sync()
+            if counter % render_every == 0:
+                viewer.sync()
 
             time_until_next_step = m.opt.timestep - (time.time() - step_start)
             if time_until_next_step > 0:
@@ -628,6 +645,12 @@ def main():
                         help="Save motion data to JSON file")
     parser.add_argument("--loop", action="store_true",
                         help="Loop motion/policy when reaching the end of sequence")
+    parser.add_argument(
+        "--render_every",
+        type=int,
+        default=10,
+        help="Viewer sync interval in physics steps. Larger value means lower rendering frequency.",
+    )
     
     args = parser.parse_args()
     
@@ -636,7 +659,15 @@ def main():
     print(f"[INFO]: XML path: {args.xml_path}")
     print(f"[INFO]: Policy path: {args.policy_path}")
     
-    run_simulation(args.robot, args.motion_file, args.xml_path, args.policy_path, args.save_json, args.loop)
+    run_simulation(
+        args.robot,
+        args.motion_file,
+        args.xml_path,
+        args.policy_path,
+        args.save_json,
+        args.loop,
+        args.render_every,
+    )
 
 
 if __name__ == "__main__":

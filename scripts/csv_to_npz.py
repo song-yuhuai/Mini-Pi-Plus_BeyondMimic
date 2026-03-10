@@ -259,10 +259,16 @@ ROBOT_CONFIGS = {
             "left_shoulder_roll_joint",
             "left_shoulder_yaw_joint",
             "left_elbow_joint",
+            "left_wrist_yaw_joint",
+            "left_wrist_pitch_joint",
+            "left_wrist_roll_joint",
             "right_shoulder_pitch_joint",
             "right_shoulder_roll_joint",
             "right_shoulder_yaw_joint",
             "right_elbow_joint",
+            "right_wrist_yaw_joint",
+            "right_wrist_pitch_joint",
+            "right_wrist_roll_joint",
         ],
     },
 }
@@ -384,18 +390,6 @@ class MotionLoader:
 
     def _resolve_extra_dofs(self, dof_tensor: torch.Tensor, current_dof: int, expected_dof: int) -> torch.Tensor:
         """Maps known CSV layouts to the expected DoF layout; falls back to leading trim."""
-        if args_cli.robot == "x2" and current_dof == 29 and expected_dof == 23:
-            # 29-DoF X2 CSV layout includes 3 wrist joints per arm:
-            # [ ... left_elbow, left_wrist_roll, left_wrist_pitch, left_wrist_yaw,
-            #   right_shoulder_pitch, right_shoulder_roll, right_shoulder_yaw, right_elbow, ... ]
-            # The 23-DoF training layout excludes wrists; keep right-arm indices aligned explicitly.
-            remap_idx = list(range(19)) + [22, 23, 24, 25]
-            print(
-                "[WARN]: CSV has 29 DoF for x2 while training expects 23. "
-                "Applying x2 29->23 remap (drop wrist joints) instead of naive truncation."
-            )
-            return dof_tensor[:, remap_idx]
-
         print(
             f"[WARN]: CSV has {current_dof} DoF columns but robot '{args_cli.robot}' expects {expected_dof}. "
             f"Trimming to first {expected_dof} columns."
