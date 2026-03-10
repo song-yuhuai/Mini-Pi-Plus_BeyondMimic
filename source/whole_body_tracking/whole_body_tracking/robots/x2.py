@@ -39,6 +39,9 @@ X2_CFG = ArticulationCfg(
             "left_shoulder_roll_joint": 0.25,
             "right_shoulder_roll_joint": -0.25,
             ".*_elbow_joint": -0.97,
+            ".*_wrist_yaw_joint": 0.0,
+            ".*_wrist_pitch_joint": 0.0,
+            ".*_wrist_roll_joint": 0.0,
         },
         joint_vel={".*": 0.0},
     ),
@@ -84,7 +87,7 @@ X2_CFG = ArticulationCfg(
                 ".*_shoulder_roll_joint",
                 ".*_shoulder_yaw_joint",
                 ".*_elbow_joint",
-                # ".*_wrist_yaw_joint",
+                ".*_wrist_yaw_joint",
             ],
             effort_limit_sim={
                 ".*_ankle_pitch_joint": 36.0,
@@ -95,7 +98,7 @@ X2_CFG = ArticulationCfg(
                 ".*_shoulder_roll_joint": 36.0,
                 ".*_shoulder_yaw_joint": 24.0,
                 ".*_elbow_joint": 24.0,
-                # ".*_wrist_yaw_joint": 24.0,
+                ".*_wrist_yaw_joint": 24.0,
             },
             velocity_limit_sim={
                 ".*_ankle_pitch_joint": 13.0,
@@ -106,7 +109,7 @@ X2_CFG = ArticulationCfg(
                 ".*_shoulder_roll_joint": 13.0,
                 ".*_shoulder_yaw_joint": 15.0,
                 ".*_elbow_joint": 15.0,
-                # ".*_wrist_yaw_joint": 15.0,
+                ".*_wrist_yaw_joint": 15.0,
             },
             stiffness={
                 ".*_ankle_pitch_joint": 45.0,
@@ -117,7 +120,7 @@ X2_CFG = ArticulationCfg(
                 ".*_shoulder_roll_joint": 60.0,
                 ".*_shoulder_yaw_joint": 28.0,
                 ".*_elbow_joint": 35.0,
-                # ".*_wrist_yaw_joint": 24.0,
+                ".*_wrist_yaw_joint": 24.0,
             },
             damping={
                 ".*_ankle_pitch_joint": 2.8,
@@ -128,43 +131,33 @@ X2_CFG = ArticulationCfg(
                 ".*_shoulder_roll_joint": 2.0,
                 ".*_shoulder_yaw_joint": 1.3,
                 ".*_elbow_joint": 1.8,
-                # ".*_wrist_yaw_joint": 1.0,
+                ".*_wrist_yaw_joint": 1.0,
             },
             armature=0.01,
         ),
-        # "N24-small": ImplicitActuatorCfg(
-        #     joint_names_expr=[
-        #         ".*_wrist_pitch_joint",
-        #         ".*_wrist_roll_joint",
-        #         "head_yaw_joint",
-        #         "head_pitch_joint",
-        #     ],
-        #     effort_limit_sim={
-        #         ".*_wrist_pitch_joint": 4.8,
-        #         ".*_wrist_roll_joint": 4.8,
-        #         "head_yaw_joint": 2.6,
-        #         "head_pitch_joint": 0.6,
-        #     },
-        #     velocity_limit_sim={
-        #         ".*_wrist_pitch_joint": 4.2,
-        #         ".*_wrist_roll_joint": 4.2,
-        #         "head_yaw_joint": 6.0,
-        #         "head_pitch_joint": 6.0,
-        #     },
-        #     stiffness={
-        #         ".*_wrist_pitch_joint": 8.0,
-        #         ".*_wrist_roll_joint": 8.0,
-        #         "head_yaw_joint": 6.0,
-        #         "head_pitch_joint": 3.0,
-        #     },
-        #     damping={
-        #         ".*_wrist_pitch_joint": 0.3,
-        #         ".*_wrist_roll_joint": 0.3,
-        #         "head_yaw_joint": 0.2,
-        #         "head_pitch_joint": 0.1,
-        #     },
-        #     armature=0.002,
-        # ),
+        "N24-small": ImplicitActuatorCfg(
+            joint_names_expr=[
+                ".*_wrist_pitch_joint",
+                ".*_wrist_roll_joint",
+            ],
+            effort_limit_sim={
+                ".*_wrist_pitch_joint": 4.8,
+                ".*_wrist_roll_joint": 4.8,
+            },
+            velocity_limit_sim={
+                ".*_wrist_pitch_joint": 4.2,
+                ".*_wrist_roll_joint": 4.2,
+            },
+            stiffness={
+                ".*_wrist_pitch_joint": 8.0,
+                ".*_wrist_roll_joint": 8.0,
+            },
+            damping={
+                ".*_wrist_pitch_joint": 0.3,
+                ".*_wrist_roll_joint": 0.3,
+            },
+            armature=0.002,
+        ),
     },
 )
 
