@@ -399,7 +399,7 @@ def run_simulation(robot_type: str, motion_file: str | None, xml_path: str, poli
     motionquat = None
     motioninputpos = None
     motioninputvel = None
-    num_frames = 1
+    num_frames = None
     if use_external_motion:
         motion = np.load(motion_file)
         motionpos = motion["body_pos_w"]
@@ -413,11 +413,20 @@ def run_simulation(robot_type: str, motion_file: str | None, xml_path: str, poli
 
     # safe index helper (supports looping with external motion sequence)
     def frame_idx(t):
-        if not use_external_motion:
+        # External motion: always bounded by NPZ length.
+        if use_external_motion:
+            if num_frames is None or num_frames <= 0:
+                return 0
+            if loop:
+                return t % num_frames
+            return min(t, num_frames - 1)
+
+        # Embedded motion: if length is known, respect it; otherwise just pass through.
+        if num_frames is None or num_frames <= 0:
             return t
-        if loop and num_frames > 0:
+        if loop:
             return t % num_frames
-        return t if t < num_frames else num_frames - 1
+        return min(t, num_frames - 1)
     
     # Save motion data to JSON if requested and available
     if save_json and use_external_motion:
@@ -457,7 +466,7 @@ def run_simulation(robot_type: str, motion_file: str | None, xml_path: str, poli
     stiffness_array_seq = None
     damping_array_seq = None
     action_scale = None
-    
+    embedded_num_frames = None
     for prop in model.metadata_props:
         if prop.key == "joint_names":
             joint_seq = prop.value.split(",")
@@ -469,8 +478,19 @@ def run_simulation(robot_type: str, motion_file: str | None, xml_path: str, poli
             damping_array_seq = np.array([float(x) for x in prop.value.split(",")])
         elif prop.key == "action_scale":
             action_scale = np.array([float(x) for x in prop.value.split(",")])
+        elif prop.key in ("num_frames", "time_step_total", "motion_num_frames"):
+            try:
+                embedded_num_frames = int(float(prop.value))
+            except ValueError:
+                pass
         print(f"{prop.key}: {prop.value}")
-    
+    if not use_external_motion:
+        num_frames = embedded_num_frames
+        if num_frames is not None:
+            print(f"[INFO]: Embedded motion length from ONNX metadata: {num_frames} frames")
+        else:
+            print("[WARN]: Embedded motion length metadata not found; time_step will increase without explicit end clamp.")
+
     # Remap to XML joint order
     joint_xml = config["joint_names"]
     joint_pos_array = np.array([joint_pos_array_seq[joint_seq.index(joint)] for joint in joint_xml])
@@ -602,8 +622,16 @@ def run_simulation(robot_type: str, motion_file: str | None, xml_path: str, poli
                         motionquatcurrent = body_quat_out.reshape(-1)[:4]
                 
                 # advance time step; if not looping and超过序列则保持在末帧
-                if loop or timestep + 1 < num_frames:
-                    timestep += 1
+                                # Advance time step
+                if use_external_motion:
+                    if loop or timestep + 1 < num_frames:
+                        timestep += 1
+                else:
+                    # Embedded-motion ONNX should continue progressing even without an external NPZ.
+                    if num_frames is None:
+                        timestep += 1
+                    elif loop or timestep + 1 < num_frames:
+                        timestep += 1
 
             if counter % render_decimation == 0:
                 viewer.sync()
