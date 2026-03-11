@@ -117,15 +117,34 @@ class X2StairEnvCfg(TrackingEnvCfg):
         self.viewer.asset_name = None
         self.scene.contact_forces.debug_vis = False
 
-        # Stair task tuning.
-        self.rewards.motion_body_pos.weight = 1.6
-        self.rewards.motion_body_pos.params["std"] = 0.12
+        # More forgiving/style-oriented imitation tuning for imperfect retargeted clips.
+        self.rewards.motion_global_anchor_pos.weight = 0.2
+        self.rewards.motion_global_anchor_pos.params["std"] = 0.6
+        self.rewards.motion_global_anchor_ori.weight = 0.2
+        self.rewards.motion_global_anchor_ori.params["std"] = 0.7
+
+        self.rewards.motion_body_pos.weight = 1.1
+        self.rewards.motion_body_pos.params["std"] = 0.22
+        self.rewards.motion_body_ori.weight = 1.3
+        self.rewards.motion_body_ori.params["std"] = 0.6
+
+        self.rewards.motion_body_lin_vel.weight = 0.8
+        self.rewards.motion_body_lin_vel.params["std"] = 1.4
+        self.rewards.motion_body_ang_vel.weight = 0.8
+        self.rewards.motion_body_ang_vel.params["std"] = 4.0
+        self.rewards.action_rate_l2.weight = -1.5e-1
+
+        # Relax imitation-mismatch resets; keep failure resets mostly physics/contact driven.
+        self.terminations.anchor_pos.params["threshold"] = 0.45
+        self.terminations.anchor_ori = None
+        self.terminations.ee_body_pos.params["threshold"] = 0.40
         self.terminations.ee_body_pos.params["body_names"] = [
             "left_ankle_roll_link",
             "right_ankle_roll_link",
-            "left_elbow_link",
-            "right_elbow_link",
         ]
+
+        # Keep adaptive sampling less failure-centric through training.
+        self.commands.motion.adaptive_uniform_ratio = 0.35
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
             "contact_forces",
             body_names=[
@@ -195,8 +214,8 @@ class X2StairRobustEnvCfg(X2StairEnvCfg):
         self.rewards.action_rate_l2.weight = -5e-2
         self.rewards.motion_body_lin_vel.weight = 0.8
         self.rewards.motion_body_ang_vel.weight = 0.8
-        self.terminations.anchor_pos.params["threshold"] = 0.30
-        self.terminations.ee_body_pos.params["threshold"] = 0.30
+        self.terminations.anchor_pos.params["threshold"] = 0.45
+        self.terminations.ee_body_pos.params["threshold"] = 0.40
 
 
 @configclass
