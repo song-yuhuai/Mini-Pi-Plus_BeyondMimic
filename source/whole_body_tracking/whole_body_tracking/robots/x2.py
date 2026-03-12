@@ -158,15 +158,20 @@ X2_CFG = ArticulationCfg(
     },
 )
 
+# X2_ACTION_SCALE = {}
+# for a in X2_CFG.actuators.values():
+#     e = a.effort_limit_sim
+#     s = a.stiffness
+#     names = a.joint_names_expr
+#     if not isinstance(e, dict):
+#         e = {n: e for n in names}
+#     if not isinstance(s, dict):
+#         s = {n: s for n in names}
+#     for n in names:
+#         if n in e and n in s and s[n]:
+#             X2_ACTION_SCALE[n] = 0.25 * e[n] / s[n]
+
 X2_ACTION_SCALE = {}
 for a in X2_CFG.actuators.values():
-    e = a.effort_limit_sim
-    s = a.stiffness
-    names = a.joint_names_expr
-    if not isinstance(e, dict):
-        e = {n: e for n in names}
-    if not isinstance(s, dict):
-        s = {n: s for n in names}
-    for n in names:
-        if n in e and n in s and s[n]:
-            X2_ACTION_SCALE[n] = 0.25 * e[n] / s[n]
+    for n in a.joint_names_expr:
+        X2_ACTION_SCALE[n] = 0.25
