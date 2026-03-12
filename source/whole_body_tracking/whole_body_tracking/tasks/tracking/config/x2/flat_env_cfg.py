@@ -16,7 +16,7 @@ class X2StairEnvCfg(TrackingEnvCfg):
         super().__post_init__()
 
         self.scene.robot = X2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-        self.actions.joint_pos.scale = X2_ACTION_SCALE
+        self.actions.joint_pos.scale = 0.25
         # Keep full-joint tracking for X2 NPZ files that include all 29 robot joints.
         self.actions.joint_pos.joint_names = [".*"]
         self.commands.motion.joint_names = None

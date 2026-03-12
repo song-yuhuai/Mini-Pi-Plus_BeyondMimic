@@ -172,4 +172,4 @@ for a in X2_CFG.actuators.values():
         s = {n: s for n in names}
     for n in names:
         if n in e and n in s and s[n]:
-            X2_ACTION_SCALE[n] = 0.25 * e[n] / s[n]
+            X2_ACTION_SCALE[n] = 0.25 

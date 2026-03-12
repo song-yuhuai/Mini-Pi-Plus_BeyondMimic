@@ -459,7 +459,7 @@ class TrackingEnvCfg(ManagerBasedRLEnvCfg):
     # 场景设置
     scene: MySceneCfg = MySceneCfg(
         num_envs=4096,                        # 并行环境数量
-        env_spacing=7.5                      # 环境间距(m)
+        env_spacing=5.5                      # 环境间距(m)
     )
     
     # 基础MDP组件
@@ -480,7 +480,7 @@ class TrackingEnvCfg(ManagerBasedRLEnvCfg):
         """
         # 通用设置
         self.decimation = 4                   # 控制频率抽取率 (仿真50Hz → 控制12.5Hz)
-        self.episode_length_s = 23          # Episode时长(s)
+        self.episode_length_s = 31         # Episode时长(s)
         
         # 仿真设置
         self.sim.dt = 0.005                   # 仿真时间步长(s) = 200Hz
