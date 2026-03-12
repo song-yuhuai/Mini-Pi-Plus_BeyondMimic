@@ -26,7 +26,7 @@ from scipy.spatial.transform import Rotation as R
 simulation_duration = 3000.0
 simulation_dt = 0.002
 control_decimation = 10
-render_decimation = 5
+render_decimation = 10
 
 # Robot configurations
 ROBOT_CONFIGS = {

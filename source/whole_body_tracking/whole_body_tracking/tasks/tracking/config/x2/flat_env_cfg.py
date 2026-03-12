@@ -139,8 +139,8 @@ class X2StairEnvCfg(TrackingEnvCfg):
         self.terminations.anchor_ori = None
         self.terminations.ee_body_pos.params["threshold"] = 0.40
         self.terminations.ee_body_pos.params["body_names"] = [
-            "left_ankle_roll_link",
-            "right_ankle_roll_link",
+            # "left_ankle_roll_link",
+            # "right_ankle_roll_link",
         ]
 
         # Keep adaptive sampling less failure-centric through training.
