@@ -259,3 +259,7 @@ class X2FlatPlayEnvCfg(X2FlatEnvCfg):
         self.terminations.anchor_pos = None
         self.terminations.anchor_ori = None
         self.terminations.ee_body_pos = None
+
+        # Disable domain randomization/disturbances during play.
+        self.events.physics_material = None
+        self.events.push_robot = None
