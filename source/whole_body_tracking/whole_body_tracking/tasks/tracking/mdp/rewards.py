@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 from typing import TYPE_CHECKING
 
+from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_error_magnitude
@@ -80,3 +81,24 @@ def feet_contact_time(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, thresh
     last_contact_time = contact_sensor.data.last_contact_time[:, sensor_cfg.body_ids]
     reward = torch.sum((last_contact_time < threshold) * first_air, dim=-1)
     return reward
+
+
+def joint_pos_target_l1(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    target: float | list[float] = 0.0,
+) -> torch.Tensor:
+    """L1 penalty of selected joint positions to a target position."""
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    if asset_cfg.joint_ids == slice(None):
+        joint_pos = asset.data.joint_pos
+    else:
+        joint_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
+
+    target_tensor = torch.as_tensor(target, dtype=joint_pos.dtype, device=joint_pos.device)
+    if target_tensor.ndim == 0:
+        target_tensor = target_tensor.expand(joint_pos.shape[-1])
+
+    error = torch.abs(joint_pos - target_tensor)
+    return torch.sum(error, dim=-1)

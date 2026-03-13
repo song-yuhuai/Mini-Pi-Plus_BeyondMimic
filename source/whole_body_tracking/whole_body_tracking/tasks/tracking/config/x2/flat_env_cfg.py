@@ -1,6 +1,7 @@
 import isaaclab.sim as sim_utils
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 from isaaclab.assets import AssetBaseCfg
@@ -163,6 +164,24 @@ class X2StairEnvCfg(TrackingEnvCfg):
             body_names=[
                 r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_elbow_link$)(?!right_elbow_link$).+$"
             ],
+        )
+        self.rewards.joint_pos_target = RewTerm(
+            func=mdp.joint_pos_target_l1,
+            weight=-1.0,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=[
+                        "left_wrist_yaw_joint",
+                        "left_wrist_pitch_joint",
+                        "left_wrist_roll_joint",
+                        "right_wrist_yaw_joint",
+                        "right_wrist_pitch_joint",
+                        "right_wrist_roll_joint",
+                    ],
+                ),
+                "target": 0.0,
+            },
         )
 
         self.events.base_com = EventTerm(
