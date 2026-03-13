@@ -390,6 +390,15 @@ class RewardsCfg:
         },
     )  # 不期望接触惩罚，避免非末端执行器接触地面
 
+    joint_pos_target = RewTerm(
+        func=mdp.joint_pos_target_l1,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
+            "target": 0.0,
+        },
+    )
+
 @configclass
 class TerminationsCfg:
     """MDP终止条件配置

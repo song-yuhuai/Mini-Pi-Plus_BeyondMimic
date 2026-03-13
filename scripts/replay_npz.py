@@ -129,6 +129,14 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         torch.tensor([0], dtype=torch.long, device=sim.device),
         sim.device,
     )
+    # Print total replayable frames for quick inspection.
+    total_frames = motion.time_step_total
+    if isinstance(total_frames, torch.Tensor):
+        total_frames = int(total_frames.max().item())
+    else:
+        total_frames = int(total_frames)
+    print(f"[INFO]: Total motion frames: {total_frames}")
+
     time_steps = torch.zeros(scene.num_envs, dtype=torch.long, device=sim.device)
 
     # Simulation loop

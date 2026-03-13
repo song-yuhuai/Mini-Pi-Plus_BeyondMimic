@@ -82,6 +82,18 @@ torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
 
+def _print_joint_action_scales(env) -> None:
+    """Print resolved joint action scales for quick startup verification."""
+    try:
+        joint_term = env.unwrapped.action_manager.get_term("joint_pos")
+        joint_names = joint_term._joint_names[0]
+        scales = joint_term._scale[0].detach().cpu().tolist()
+        print("[INFO] Resolved joint action scales (joint_pos):")
+        for name, scale in zip(joint_names, scales):
+            print(f"  - {name}: {scale:.6f}")
+    except Exception as exc:
+        print(f"[WARN] Failed to print joint action scales: {exc}")
+
 
 @hydra_task_config(args_cli.task, "rsl_rl_cfg_entry_point")
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlOnPolicyRunnerCfg):
@@ -134,6 +146,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # create isaac environment
     # Disable rgb_array render mode to avoid DOF velocity issues
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode=None)
+    _print_joint_action_scales(env)
     # wrap for video recording - temporarily disabled to fix DOF velocity issue
     if False:  # args_cli.video:
         video_kwargs = {
