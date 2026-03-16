@@ -122,9 +122,9 @@ class X2StairEnvCfg(TrackingEnvCfg):
         # Height = 0.15m, top surface at z = 0.15.
         self.scene.stair_step = AssetBaseCfg(
             prim_path="{ENV_REGEX_NS}/StairStep",
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.60, -0.4, 0.075)),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.70, 0.0, 0.09)),
             spawn=sim_utils.CuboidCfg(
-                size=(0.40, 1.20, 0.15),
+                size=(0.60, 0.60, 0.18),
                 rigid_props=sim_utils.RigidBodyPropertiesCfg(
                     kinematic_enabled=True,
                     disable_gravity=True,
