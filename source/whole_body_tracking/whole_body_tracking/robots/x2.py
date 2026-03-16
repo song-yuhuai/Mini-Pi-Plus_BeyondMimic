@@ -176,15 +176,5 @@ for a in X2_CFG.actuators.values():
     for n in a.joint_names_expr:
         X2_ACTION_SCALE[n] = 0.25
 
-# Keep full DOF/action dimensions unchanged, but freeze wrist motion by zeroing
-# the action scale for all wrist joints.
-# NOTE: Use regex keys already present in the base map to avoid duplicate-pattern
-# collisions (IsaacLab forbids multiple matches for a single joint name).
-X2_ACTION_SCALE.update(
-    {
-        ".*_wrist_yaw_joint": 0.0,
-        ".*_wrist_pitch_joint": 0.0,
-        ".*_wrist_roll_joint": 0.0,
-    }
-)
+
 
