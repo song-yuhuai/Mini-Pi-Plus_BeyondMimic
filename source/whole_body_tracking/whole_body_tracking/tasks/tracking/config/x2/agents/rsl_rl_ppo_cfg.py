@@ -29,3 +29,13 @@ class X2StairPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         desired_kl=0.01,
         max_grad_norm=1.0,
     )
+
+
+@configclass
+class X2FlatPPORunnerCfg(X2StairPPORunnerCfg):
+    experiment_name = "x2_flat"
+
+
+@configclass
+class X2FlatRobustPPORunnerCfg(X2FlatPPORunnerCfg):
+    experiment_name = "x2_flat_robust"

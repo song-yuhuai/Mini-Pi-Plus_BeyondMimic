@@ -263,6 +263,24 @@ class X2FlatEnvCfg(X2StairEnvCfg):
         # Explicitly enforce flat terrain.
         self.scene.terrain.terrain_type = "plane"
 
+        # Increase action smoothness penalty for flat-task deployment stability.
+        self.rewards.action_rate_l2.weight = -0.2
+
+@configclass
+class X2FlatRobustEnvCfg(X2StairRobustEnvCfg):
+    """Flat-ground X2 tracking variant with no stair/chassis obstacle."""
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Keep the same tracking task configuration, but remove the stair obstacle.
+        self.scene.stair_step = None
+
+        # Explicitly enforce flat terrain.
+        self.scene.terrain.terrain_type = "plane"
+
+        # Increase action smoothness penalty for flat-task deployment stability.
+        self.rewards.action_rate_l2.weight = -0.2
 
 @configclass
 class X2FlatPlayEnvCfg(X2FlatEnvCfg):

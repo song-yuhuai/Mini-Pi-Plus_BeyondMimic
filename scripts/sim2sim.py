@@ -13,6 +13,7 @@ Usage Examples:
 import argparse
 import json
 import time
+from pathlib import Path
 
 import mujoco
 import mujoco.viewer
@@ -394,6 +395,8 @@ def run_simulation(
     save_json: bool = False,
     loop: bool = False,
     render_every: int = 10,
+    plot_root_xy: bool = False,
+    root_xy_plot_path: str = "outputs/root_xy_trajectory.png",
 ):
     """Run the sim2sim simulation."""
     config = ROBOT_CONFIGS[robot_type]
@@ -527,6 +530,7 @@ def run_simulation(
         raise ValueError(f"Body {body_name} not found in model")
 
     render_every = max(1, int(render_every))
+    root_xy_traj = []
 
     with mujoco.viewer.launch_passive(m, d) as viewer:
         start = time.time()
@@ -539,6 +543,8 @@ def run_simulation(
 
             d.ctrl[:] = tau
             counter += 1
+            if plot_root_xy:
+                root_xy_traj.append([float(d.qpos[0]), float(d.qpos[1])])
             
             if counter % control_decimation == 0:
                 # Update motion data
@@ -621,6 +627,34 @@ def run_simulation(
             if time_until_next_step > 0:
                 time.sleep(time_until_next_step)
 
+    if plot_root_xy:
+        if len(root_xy_traj) < 2:
+            print("[WARN]: Not enough root XY points to plot trajectory.")
+        else:
+            try:
+                import matplotlib.pyplot as plt
+
+                root_xy = np.asarray(root_xy_traj, dtype=np.float64)
+                out_path = Path(root_xy_plot_path)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+
+                plt.figure(figsize=(7, 7))
+                plt.plot(root_xy[:, 0], root_xy[:, 1], linewidth=1.5, label="root_xy")
+                plt.scatter(root_xy[0, 0], root_xy[0, 1], c="green", s=40, label="start")
+                plt.scatter(root_xy[-1, 0], root_xy[-1, 1], c="red", s=40, label="end")
+                plt.xlabel("x (m)")
+                plt.ylabel("y (m)")
+                plt.title(f"Root XY Trajectory ({robot_type})")
+                plt.axis("equal")
+                plt.grid(True, alpha=0.3)
+                plt.legend()
+                plt.tight_layout()
+                plt.savefig(out_path, dpi=200)
+                plt.close()
+                print(f"[INFO]: Root XY trajectory saved to: {out_path}")
+            except Exception as err:
+                print(f"[WARN]: Failed to plot root XY trajectory: {err}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Unified sim2sim script for multiple robots.")
@@ -651,6 +685,17 @@ def main():
         default=10,
         help="Viewer sync interval in physics steps. Larger value means lower rendering frequency.",
     )
+    parser.add_argument(
+        "--plot_root_xy",
+        action="store_true",
+        help="Plot root x-y trajectory and save as an image after simulation ends.",
+    )
+    parser.add_argument(
+        "--root_xy_plot_path",
+        type=str,
+        default="outputs/root_xy_trajectory.png",
+        help="Output path for root x-y trajectory plot.",
+    )
     
     args = parser.parse_args()
     
@@ -667,6 +712,8 @@ def main():
         args.save_json,
         args.loop,
         args.render_every,
+        args.plot_root_xy,
+        args.root_xy_plot_path,
     )
 
 
