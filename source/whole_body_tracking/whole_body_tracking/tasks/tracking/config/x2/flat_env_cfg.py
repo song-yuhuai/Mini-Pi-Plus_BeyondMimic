@@ -40,16 +40,16 @@ class X2StairEnvCfg(TrackingEnvCfg):
             "left_shoulder_roll_joint",
             "left_shoulder_yaw_joint",
             "left_elbow_joint",
-            "left_wrist_yaw_joint",
-            "left_wrist_pitch_joint",
-            "left_wrist_roll_joint",
+            # "left_wrist_yaw_joint",
+            # "left_wrist_pitch_joint",
+            # "left_wrist_roll_joint",
             "right_shoulder_pitch_joint",
             "right_shoulder_roll_joint",
             "right_shoulder_yaw_joint",
             "right_elbow_joint",
-            "right_wrist_yaw_joint",
-            "right_wrist_pitch_joint",
-            "right_wrist_roll_joint",
+            # "right_wrist_yaw_joint",
+            # "right_wrist_pitch_joint",
+            # "right_wrist_roll_joint",
         ]
         self.commands.motion.anchor_body_name = "pelvis"
         self.commands.motion.body_names = [
@@ -63,10 +63,10 @@ class X2StairEnvCfg(TrackingEnvCfg):
             "waist_yaw_link",
             "left_shoulder_roll_link",
             "left_elbow_link",
-            "left_wrist_yaw_link",
+            # "left_wrist_yaw_link",
             "right_shoulder_roll_link",
             "right_elbow_link",
-            "right_wrist_yaw_link",
+            # "right_wrist_yaw_link",
         ]
         # Deterministic resets: no random spawn offsets/rotations/velocities/joint jitters.
         self.commands.motion.pose_range = {
@@ -122,9 +122,9 @@ class X2StairEnvCfg(TrackingEnvCfg):
         # Height = 0.15m, top surface at z = 0.15.
         self.scene.stair_step = AssetBaseCfg(
             prim_path="{ENV_REGEX_NS}/StairStep",
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.70, 0.0, 0.09)),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.60, -0.3, 0.09)),
             spawn=sim_utils.CuboidCfg(
-                size=(0.60, 0.60, 0.18),
+                size=(0.42, 0.6, 0.18),
                 rigid_props=sim_utils.RigidBodyPropertiesCfg(
                     kinematic_enabled=True,
                     disable_gravity=True,
@@ -165,24 +165,24 @@ class X2StairEnvCfg(TrackingEnvCfg):
                 r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_elbow_link$)(?!right_elbow_link$).+$"
             ],
         )
-        self.rewards.joint_pos_target = RewTerm(
-            func=mdp.joint_pos_target_l1,
-            weight=-1.0,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot",
-                    joint_names=[
-                        "left_wrist_yaw_joint",
-                        "left_wrist_pitch_joint",
-                        "left_wrist_roll_joint",
-                        "right_wrist_yaw_joint",
-                        "right_wrist_pitch_joint",
-                        "right_wrist_roll_joint",
-                    ],
-                ),
-                "target": 0.0,
-            },
-        )
+        # self.rewards.joint_pos_target = RewTerm(
+        #     func=mdp.joint_pos_target_l1,
+        #     weight=-1.0,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg(
+        #             "robot",
+        #             joint_names=[
+        #                 "left_wrist_yaw_joint",
+        #                 "left_wrist_pitch_joint",
+        #                 "left_wrist_roll_joint",
+        #                 "right_wrist_yaw_joint",
+        #                 "right_wrist_pitch_joint",
+        #                 "right_wrist_roll_joint",
+        #             ],
+        #         ),
+        #         "target": 0.0,
+        #     },
+        # )
 
         self.events.base_com = EventTerm(
             func=mdp.randomize_rigid_body_com,

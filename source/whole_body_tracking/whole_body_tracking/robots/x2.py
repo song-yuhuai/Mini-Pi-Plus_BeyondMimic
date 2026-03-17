@@ -11,7 +11,7 @@ X2_CFG = ArticulationCfg(
     spawn=sim_utils.UrdfFileCfg(
         fix_base=False,
         replace_cylinders_with_capsules=True,
-        asset_path=f"{ASSET_DIR}/x2/x2_ultra_simple_collision.urdf",
+        asset_path=f"{ASSET_DIR}/x2/x2_ultra_simple_collision_23dof.urdf",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -84,7 +84,7 @@ X2_CFG = ArticulationCfg(
                 ".*_shoulder_roll_joint",
                 ".*_shoulder_yaw_joint",
                 ".*_elbow_joint",
-                ".*_wrist_yaw_joint",
+                # ".*_wrist_yaw_joint",
             ],
             effort_limit_sim={
                 ".*_ankle_pitch_joint": 36.0,
@@ -95,7 +95,7 @@ X2_CFG = ArticulationCfg(
                 ".*_shoulder_roll_joint": 36.0,
                 ".*_shoulder_yaw_joint": 24.0,
                 ".*_elbow_joint": 24.0,
-                ".*_wrist_yaw_joint": 24.0,
+                # ".*_wrist_yaw_joint": 24.0,
             },
             velocity_limit_sim={
                 ".*_ankle_pitch_joint": 13.0,
@@ -106,7 +106,7 @@ X2_CFG = ArticulationCfg(
                 ".*_shoulder_roll_joint": 13.0,
                 ".*_shoulder_yaw_joint": 15.0,
                 ".*_elbow_joint": 15.0,
-                ".*_wrist_yaw_joint": 15.0,
+                # ".*_wrist_yaw_joint": 15.0,
             },
             stiffness={
                 ".*_ankle_pitch_joint": 40.0,
@@ -117,7 +117,7 @@ X2_CFG = ArticulationCfg(
                 ".*_shoulder_roll_joint": 50.0,
                 ".*_shoulder_yaw_joint": 50.0,
                 ".*_elbow_joint": 50.0,
-                ".*_wrist_yaw_joint": 20.0,
+                # ".*_wrist_yaw_joint": 20.0,
             },
             damping={
                 ".*_ankle_pitch_joint": 2.0,
@@ -128,33 +128,33 @@ X2_CFG = ArticulationCfg(
                 ".*_shoulder_roll_joint": 3.0,
                 ".*_shoulder_yaw_joint": 3.0,
                 ".*_elbow_joint": 3.0,
-                ".*_wrist_yaw_joint": 2.0,
+                # ".*_wrist_yaw_joint": 2.0,
             },
             armature=0.01,
         ),
-        "N24-small": ImplicitActuatorCfg(
-            joint_names_expr=[
-                ".*_wrist_pitch_joint",
-                ".*_wrist_roll_joint",
-            ],
-            effort_limit_sim={
-                ".*_wrist_pitch_joint": 4.8,
-                ".*_wrist_roll_joint": 4.8,
-            },
-            velocity_limit_sim={
-                ".*_wrist_pitch_joint": 4.2,
-                ".*_wrist_roll_joint": 4.2,
-            },
-            stiffness={
-                ".*_wrist_pitch_joint": 20.0,
-                ".*_wrist_roll_joint": 20.0,
-            },
-            damping={
-                ".*_wrist_pitch_joint": 2.0,
-                ".*_wrist_roll_joint": 2.0,
-            },
-            armature=0.002,
-        ),
+        # "N24-small": ImplicitActuatorCfg(
+        #     joint_names_expr=[
+        #         ".*_wrist_pitch_joint",
+        #         ".*_wrist_roll_joint",
+        #     ],
+        #     effort_limit_sim={
+        #         ".*_wrist_pitch_joint": 4.8,
+        #         ".*_wrist_roll_joint": 4.8,
+        #     },
+        #     velocity_limit_sim={
+        #         ".*_wrist_pitch_joint": 4.2,
+        #         ".*_wrist_roll_joint": 4.2,
+        #     },
+        #     stiffness={
+        #         ".*_wrist_pitch_joint": 20.0,
+        #         ".*_wrist_roll_joint": 20.0,
+        #     },
+        #     damping={
+        #         ".*_wrist_pitch_joint": 2.0,
+        #         ".*_wrist_roll_joint": 2.0,
+        #     },
+        #     armature=0.002,
+        # ),
     },
 )
 
