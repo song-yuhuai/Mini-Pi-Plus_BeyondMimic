@@ -395,10 +395,57 @@ def run_simulation(
     save_json: bool = False,
     loop: bool = False,
     render_every: int = 10,
-    plot_root_xy: bool = False,
+    plot_root_xy: bool = True,
     root_xy_plot_path: str = "outputs/root_xy_trajectory.png",
+    trajectory_frame: str = "root_initial",
+    flip_left_right: bool = True,
+    embedded_motion_num_frames: int | None = None,
 ):
     """Run the sim2sim simulation."""
+    def _save_root_xy_plot(reason: str = "final"):
+        if not plot_root_xy:
+            return
+        if len(root_xy_traj) < 2:
+            print("[WARN]: Not enough root XY points to plot trajectory.")
+            return
+        try:
+            import matplotlib.pyplot as plt
+
+            root_xy = np.asarray(root_xy_traj, dtype=np.float64)
+            out_path = Path(root_xy_plot_path)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+
+            plt.figure(figsize=(7, 7))
+            if trajectory_frame == "root_initial":
+                # root_xy stores [forward, left]; draw as x=left/right, y=forward/backward.
+                lateral_sign = -1.0 if flip_left_right else 1.0
+                plot_x = lateral_sign * root_xy[:, 1]
+                plot_y = root_xy[:, 0]
+                plt.plot(plot_x, plot_y, linewidth=1.5, label="root_xy")
+                plt.scatter(plot_x[0], plot_y[0], c="green", s=40, label="start")
+                plt.scatter(plot_x[-1], plot_y[-1], c="red", s=40, label="end")
+                plt.xlabel("left/right (m)")
+                plt.ylabel("forward/backward (m)")
+                plt.title(f"Root Trajectory in Initial Root Frame ({robot_type})")
+            else:
+                plot_x = root_xy[:, 0]
+                plot_y = root_xy[:, 1]
+                plt.plot(plot_x, plot_y, linewidth=1.5, label="root_xy")
+                plt.scatter(plot_x[0], plot_y[0], c="green", s=40, label="start")
+                plt.scatter(plot_x[-1], plot_y[-1], c="red", s=40, label="end")
+                plt.xlabel("x (m)")
+                plt.ylabel("y (m)")
+                plt.title(f"Root XY Trajectory in World Frame ({robot_type})")
+            plt.axis("equal")
+            plt.grid(True, alpha=0.3)
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(out_path, dpi=200)
+            plt.close()
+            print(f"[INFO]: Root XY trajectory saved to: {out_path} (reason: {reason})")
+        except Exception as err:
+            print(f"[WARN]: Failed to plot root XY trajectory: {err}")
+
     config = ROBOT_CONFIGS[robot_type]
     print(f"[INFO]: Using robot configuration: {robot_type}")
     print(f"[INFO]: Actions: {config['num_actions']}, Observations: {config['num_obs']}")
@@ -421,14 +468,6 @@ def run_simulation(
     else:
         print("[INFO]: No --motion_file provided, using motion signals from ONNX outputs.")
 
-    # safe index helper (supports looping with external motion sequence)
-    def frame_idx(t):
-        if not use_external_motion:
-            return t
-        if loop and num_frames > 0:
-            return t % num_frames
-        return t if t < num_frames else num_frames - 1
-    
     # Save motion data to JSON if requested and available
     if save_json and use_external_motion:
         motion_dict = {
@@ -462,6 +501,7 @@ def run_simulation(
     
     # Load ONNX model and extract metadata
     model = onnx.load(policy_path)
+    metadata_map = {}
     joint_seq = None
     joint_pos_array_seq = None
     stiffness_array_seq = None
@@ -469,6 +509,7 @@ def run_simulation(
     action_scale = None
     
     for prop in model.metadata_props:
+        metadata_map[prop.key] = prop.value
         if prop.key == "joint_names":
             joint_seq = prop.value.split(",")
         elif prop.key == "default_joint_pos":   
@@ -480,6 +521,39 @@ def run_simulation(
         elif prop.key == "action_scale":
             action_scale = np.array([float(x) for x in prop.value.split(",")])
         print(f"{prop.key}: {prop.value}")
+
+    inferred_embedded_frames = None
+    if not use_external_motion:
+        if embedded_motion_num_frames is not None and embedded_motion_num_frames > 0:
+            inferred_embedded_frames = int(embedded_motion_num_frames)
+        else:
+            for key in ("time_step_total", "motion_num_frames", "num_frames", "phase_step_count"):
+                if key in metadata_map:
+                    try:
+                        parsed = int(float(metadata_map[key]))
+                        if parsed > 0:
+                            inferred_embedded_frames = parsed
+                            break
+                    except ValueError:
+                        continue
+        if inferred_embedded_frames is not None:
+            num_frames = inferred_embedded_frames
+            print(f"[INFO]: Embedded motion frames inferred: {num_frames}")
+        else:
+            print("[WARN]: Unable to infer embedded motion length from ONNX metadata.")
+            print("[WARN]: Pass --embedded_motion_num_frames N to enable no-external-motion loop/end control.")
+
+    # Safe index helper for both external and embedded sequences.
+    def frame_idx(t):
+        if use_external_motion:
+            if loop and num_frames > 0:
+                return t % num_frames
+            return t if t < num_frames else num_frames - 1
+        if inferred_embedded_frames is not None and inferred_embedded_frames > 0:
+            if loop:
+                return t % inferred_embedded_frames
+            return t if t < inferred_embedded_frames else inferred_embedded_frames - 1
+        return t
     
     # Remap to XML joint order
     joint_xml = config["joint_names"]
@@ -531,129 +605,171 @@ def run_simulation(
 
     render_every = max(1, int(render_every))
     root_xy_traj = []
+    root_origin_xy = None
+    forward_axis_w_xy = None
+    left_axis_w_xy = None
+    has_announced_motion_end = False
+    first_cycle_plot_saved = False
+    if plot_root_xy and trajectory_frame == "root_initial":
+        print("[INFO]: Trajectory frame is root_initial. 'Forward' is reference body local +X at the first sample.")
+        if flip_left_right:
+            print("[INFO]: Left-right axis is flipped for plotting.")
+    if loop and not use_external_motion and inferred_embedded_frames is None:
+        print("[WARN]: --loop needs embedded motion length. Pass --embedded_motion_num_frames to enable it.")
 
-    with mujoco.viewer.launch_passive(m, d) as viewer:
-        start = time.time()
-        while viewer.is_running() and time.time() - start < simulation_duration:
-            step_start = time.time()
+    try:
+        with mujoco.viewer.launch_passive(m, d) as viewer:
+            start = time.time()
+            while viewer.is_running() and time.time() - start < simulation_duration:
+                step_start = time.time()
 
-            mujoco.mj_step(m, d)
-            qpos, dq, quat, v, omega, gvec, state_tau = get_obs(d)
-            tau = pd_control(target_dof_pos, d.qpos[7:], stiffness_array, np.zeros_like(damping_array), d.qvel[6:], damping_array)
+                mujoco.mj_step(m, d)
+                qpos, dq, quat, v, omega, gvec, state_tau = get_obs(d)
+                tau = pd_control(target_dof_pos, d.qpos[7:], stiffness_array, np.zeros_like(damping_array), d.qvel[6:], damping_array)
 
-            d.ctrl[:] = tau
-            counter += 1
-            if plot_root_xy:
-                root_xy_traj.append([float(d.qpos[0]), float(d.qpos[1])])
+                d.ctrl[:] = tau
+                counter += 1
+                if plot_root_xy:
+                    pos_xy = np.array([float(d.qpos[0]), float(d.qpos[1])], dtype=np.float64)
+                    if trajectory_frame == "root_initial":
+                        if root_origin_xy is None:
+                            root_origin_xy = pos_xy.copy()
+                            body_rot_w = d.xmat[body_id].reshape(3, 3)
+                            # Local +X of reference body is treated as robot forward.
+                            fxy = body_rot_w[:2, 0].copy()
+                            norm_f = np.linalg.norm(fxy)
+                            if norm_f < 1e-8:
+                                fxy = np.array([1.0, 0.0], dtype=np.float64)
+                            else:
+                                fxy = fxy / norm_f
+                            forward_axis_w_xy = fxy
+                            left_axis_w_xy = np.array([-fxy[1], fxy[0]], dtype=np.float64)
+                        delta_xy = pos_xy - root_origin_xy
+                        forward_disp = float(np.dot(delta_xy, forward_axis_w_xy))
+                        left_disp = float(np.dot(delta_xy, left_axis_w_xy))
+                        root_xy_traj.append([forward_disp, left_disp])
+                    else:
+                        root_xy_traj.append([pos_xy[0], pos_xy[1]])
             
-            if counter % control_decimation == 0:
-                # Update motion data
-                idx = frame_idx(timestep)
-                if use_external_motion:
-                    motioninput = np.concatenate((motioninputpos[idx, :], motioninputvel[idx, :]), axis=0)
-                    motionquatcurrent = motionquat[idx, config["motion_body_index"], :]
+                if counter % control_decimation == 0:
+                    # Update motion data
+                    idx = frame_idx(timestep)
+                    if use_external_motion:
+                        motioninput = np.concatenate((motioninputpos[idx, :], motioninputvel[idx, :]), axis=0)
+                        motionquatcurrent = motionquat[idx, config["motion_body_index"], :]
                 
-                # Create observations based on robot type
-                offset = 0
-                if robot_type in ["hi", "pi_plus", "gp02_v2", "x2"]:
-                    qpos_xml = d.qpos[7:7 + num_actions]
-                    qpos_seq = np.array([qpos_xml[joint_xml.index(joint)] for joint in joint_seq])
-                    qvel_xml = d.qvel[6:6 + num_actions]
-                    qvel_seq = np.array([qvel_xml[joint_xml.index(joint)] for joint in joint_seq])
-                    if robot_type == "x2":
-                        obs = create_observation_projected_gravity(
-                            obs,
-                            offset,
-                            motioninput,
-                            gvec,
-                            omega,
-                            qpos_seq,
-                            qvel_seq,
-                            action_buffer,
-                            joint_pos_array_seq,
-                            num_actions,
-                            config["obs_scales"],
-                            config["obs_clip"],
-                        )
-                    else:
-                        q01 = quat
-                        q02 = motionquatcurrent
-                        q10 = quat_inv_np(q01)
-                        if q02 is not None:
-                            q12 = quat_mul_np(q10, q02)
+                    # Create observations based on robot type
+                    offset = 0
+                    if robot_type in ["hi", "pi_plus", "gp02_v2", "x2"]:
+                        qpos_xml = d.qpos[7:7 + num_actions]
+                        qpos_seq = np.array([qpos_xml[joint_xml.index(joint)] for joint in joint_seq])
+                        qvel_xml = d.qvel[6:6 + num_actions]
+                        qvel_seq = np.array([qvel_xml[joint_xml.index(joint)] for joint in joint_seq])
+                        if robot_type == "x2":
+                            obs = create_observation_projected_gravity(
+                                obs,
+                                offset,
+                                motioninput,
+                                gvec,
+                                omega,
+                                qpos_seq,
+                                qvel_seq,
+                                action_buffer,
+                                joint_pos_array_seq,
+                                num_actions,
+                                config["obs_scales"],
+                                config["obs_clip"],
+                            )
                         else:
-                            q12 = q10
-                        mat = matrix_from_quat(torch.from_numpy(q12))
-                        motion_ref_ori_b = mat[..., :2].reshape(6)
-                        obs = create_observation_hi_pi(
-                            obs, offset, motioninput, motion_ref_ori_b, omega, qpos_seq, qvel_seq, action_buffer, joint_pos_array_seq, num_actions
-                        )
+                            q01 = quat
+                            q02 = motionquatcurrent
+                            q10 = quat_inv_np(q01)
+                            if q02 is not None:
+                                q12 = quat_mul_np(q10, q02)
+                            else:
+                                q12 = q10
+                            mat = matrix_from_quat(torch.from_numpy(q12))
+                            motion_ref_ori_b = mat[..., :2].reshape(6)
+                            obs = create_observation_hi_pi(
+                                obs, offset, motioninput, motion_ref_ori_b, omega, qpos_seq, qvel_seq, action_buffer, joint_pos_array_seq, num_actions
+                            )
                 
-                # Run policy inference
-                obs_tensor = torch.from_numpy(obs).unsqueeze(0)
-                output_values = policy.run(None, {
-                    'obs': obs_tensor.numpy(),
-                    'time_step': np.array([frame_idx(timestep)], dtype=np.float32).reshape(1, 1)
-                })
-                output_map = {name: value for name, value in zip(policy_output_names, output_values)}
-                action = output_map["actions"]
+                    # Run policy inference
+                    obs_tensor = torch.from_numpy(obs).unsqueeze(0)
+                    output_values = policy.run(None, {
+                        'obs': obs_tensor.numpy(),
+                        'time_step': np.array([frame_idx(timestep)], dtype=np.float32).reshape(1, 1)
+                    })
+                    output_map = {name: value for name, value in zip(policy_output_names, output_values)}
+                    action = output_map["actions"]
                 
-                action = np.asarray(action).reshape(-1)
-                action_buffer = action.copy()
-                target_dof_pos = action * action_scale + joint_pos_array_seq
-                target_dof_pos = target_dof_pos.reshape(-1,)
-                target_dof_pos = np.array([target_dof_pos[joint_seq.index(joint)] for joint in joint_xml])
+                    action = np.asarray(action).reshape(-1)
+                    action_buffer = action.copy()
+                    target_dof_pos = action * action_scale + joint_pos_array_seq
+                    target_dof_pos = target_dof_pos.reshape(-1,)
+                    target_dof_pos = np.array([target_dof_pos[joint_seq.index(joint)] for joint in joint_xml])
 
-                if not use_external_motion:
-                    joint_pos_out = np.asarray(output_map["joint_pos"]).reshape(-1)
-                    joint_vel_out = np.asarray(output_map["joint_vel"]).reshape(-1)
-                    motioninput = np.concatenate((joint_pos_out[:num_actions], joint_vel_out[:num_actions]), axis=0)
-                    body_quat_out = np.asarray(output_map["body_quat_w"])
-                    if body_quat_out.ndim == 3:
-                        body_quat_out = body_quat_out[0]
-                    if body_quat_out.ndim == 2 and body_quat_out.shape[0] > config["motion_body_index"]:
-                        motionquatcurrent = body_quat_out[config["motion_body_index"], :4]
+                    if not use_external_motion:
+                        joint_pos_out = np.asarray(output_map["joint_pos"]).reshape(-1)
+                        joint_vel_out = np.asarray(output_map["joint_vel"]).reshape(-1)
+                        motioninput = np.concatenate((joint_pos_out[:num_actions], joint_vel_out[:num_actions]), axis=0)
+                        body_quat_out = np.asarray(output_map["body_quat_w"])
+                        if body_quat_out.ndim == 3:
+                            body_quat_out = body_quat_out[0]
+                        if body_quat_out.ndim == 2 and body_quat_out.shape[0] > config["motion_body_index"]:
+                            motionquatcurrent = body_quat_out[config["motion_body_index"], :4]
+                        else:
+                            motionquatcurrent = body_quat_out.reshape(-1)[:4]
+                
+                    # Advance time step.
+                    # `--loop` controls only whether external motion wraps around.
+                    # It should not freeze time progression when loop is disabled.
+                    if use_external_motion:
+                        if loop:
+                            if num_frames > 0 and timestep + 1 >= num_frames and not first_cycle_plot_saved:
+                                _save_root_xy_plot(reason="first_cycle_complete")
+                                first_cycle_plot_saved = True
+                            timestep = (timestep + 1) % max(1, num_frames)
+                        elif timestep + 1 < num_frames:
+                            timestep += 1
+                        elif not has_announced_motion_end:
+                            if not first_cycle_plot_saved:
+                                _save_root_xy_plot(reason="first_cycle_complete")
+                                first_cycle_plot_saved = True
+                            has_announced_motion_end = True
+                            print("[INFO]: Motion reached the final frame, exiting simulation (set --loop to keep running).")
+                            break
                     else:
-                        motionquatcurrent = body_quat_out.reshape(-1)[:4]
-                
-                # advance time step; if not looping and超过序列则保持在末帧
-                if loop or timestep + 1 < num_frames:
-                    timestep += 1
+                        # For embedded motion outputs, mirror external-motion loop/end behavior when frame count is known.
+                        if inferred_embedded_frames is not None and inferred_embedded_frames > 0:
+                            if loop:
+                                if timestep + 1 >= inferred_embedded_frames and not first_cycle_plot_saved:
+                                    _save_root_xy_plot(reason="first_cycle_complete")
+                                    first_cycle_plot_saved = True
+                                timestep = (timestep + 1) % inferred_embedded_frames
+                            elif timestep + 1 < inferred_embedded_frames:
+                                timestep += 1
+                            elif not has_announced_motion_end:
+                                if not first_cycle_plot_saved:
+                                    _save_root_xy_plot(reason="first_cycle_complete")
+                                    first_cycle_plot_saved = True
+                                has_announced_motion_end = True
+                                print("[INFO]: Embedded motion reached the final frame, exiting simulation (set --loop to keep running).")
+                                break
+                        else:
+                            timestep += 1
 
-            if counter % render_every == 0:
-                viewer.sync()
+                if counter % render_every == 0:
+                    viewer.sync()
 
-            time_until_next_step = m.opt.timestep - (time.time() - step_start)
-            if time_until_next_step > 0:
-                time.sleep(time_until_next_step)
-
-    if plot_root_xy:
-        if len(root_xy_traj) < 2:
-            print("[WARN]: Not enough root XY points to plot trajectory.")
-        else:
-            try:
-                import matplotlib.pyplot as plt
-
-                root_xy = np.asarray(root_xy_traj, dtype=np.float64)
-                out_path = Path(root_xy_plot_path)
-                out_path.parent.mkdir(parents=True, exist_ok=True)
-
-                plt.figure(figsize=(7, 7))
-                plt.plot(root_xy[:, 0], root_xy[:, 1], linewidth=1.5, label="root_xy")
-                plt.scatter(root_xy[0, 0], root_xy[0, 1], c="green", s=40, label="start")
-                plt.scatter(root_xy[-1, 0], root_xy[-1, 1], c="red", s=40, label="end")
-                plt.xlabel("x (m)")
-                plt.ylabel("y (m)")
-                plt.title(f"Root XY Trajectory ({robot_type})")
-                plt.axis("equal")
-                plt.grid(True, alpha=0.3)
-                plt.legend()
-                plt.tight_layout()
-                plt.savefig(out_path, dpi=200)
-                plt.close()
-                print(f"[INFO]: Root XY trajectory saved to: {out_path}")
-            except Exception as err:
-                print(f"[WARN]: Failed to plot root XY trajectory: {err}")
+                time_until_next_step = m.opt.timestep - (time.time() - step_start)
+                if time_until_next_step > 0:
+                    time.sleep(time_until_next_step)
+    except KeyboardInterrupt:
+        print("[INFO]: KeyboardInterrupt received, stopping simulation and saving outputs.")
+    finally:
+        if not first_cycle_plot_saved:
+            _save_root_xy_plot(reason="final")
 
 
 def main():
@@ -677,7 +793,7 @@ def main():
                         help="Path to the ONNX policy file")
     parser.add_argument("--save_json", action="store_true",
                         help="Save motion data to JSON file")
-    parser.add_argument("--loop", action="store_true",
+    parser.add_argument("--loop", action=argparse.BooleanOptionalAction, default=False,
                         help="Loop motion/policy when reaching the end of sequence")
     parser.add_argument(
         "--render_every",
@@ -687,7 +803,8 @@ def main():
     )
     parser.add_argument(
         "--plot_root_xy",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="Plot root x-y trajectory and save as an image after simulation ends.",
     )
     parser.add_argument(
@@ -695,6 +812,25 @@ def main():
         type=str,
         default="outputs/root_xy_trajectory.png",
         help="Output path for root x-y trajectory plot.",
+    )
+    parser.add_argument(
+        "--trajectory_frame",
+        type=str,
+        choices=["world", "root_initial"],
+        default="root_initial",
+        help="Frame for plotted trajectory: world (x/y) or root_initial (forward/left from initial root heading).",
+    )
+    parser.add_argument(
+        "--flip_left_right",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Flip left-right direction in root_initial trajectory plot.",
+    )
+    parser.add_argument(
+        "--embedded_motion_num_frames",
+        type=int,
+        default=None,
+        help="Frame count for embedded motion (no --motion_file). Enables loop/end control and first-cycle auto-save.",
     )
     
     args = parser.parse_args()
@@ -714,6 +850,9 @@ def main():
         args.render_every,
         args.plot_root_xy,
         args.root_xy_plot_path,
+        args.trajectory_frame,
+        args.flip_left_right,
+        args.embedded_motion_num_frames,
     )
 
 
