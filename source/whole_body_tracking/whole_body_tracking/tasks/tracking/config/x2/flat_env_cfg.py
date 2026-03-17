@@ -244,6 +244,8 @@ class X2StairRobustEnvCfg(X2StairEnvCfg):
 
         # Slightly more recovery-friendly shaping.
         self.rewards.action_rate_l2.weight = -5e-2
+        self.rewards.action_acc_l2.weight = -1e-2
+        self.rewards.joint_acc_l2.weight = -2e-4
         self.rewards.motion_body_lin_vel.weight = 0.8
         self.rewards.motion_body_ang_vel.weight = 0.8
         self.terminations.anchor_pos.params["threshold"] = 0.30
@@ -264,7 +266,9 @@ class X2FlatEnvCfg(X2StairEnvCfg):
         self.scene.terrain.terrain_type = "plane"
 
         # Increase action smoothness penalty for flat-task deployment stability.
-        self.rewards.action_rate_l2.weight = -0.2
+        self.rewards.action_rate_l2.weight = -0.15
+        self.rewards.action_acc_l2.weight = -1e-2
+        self.rewards.joint_acc_l2.weight = -2e-4
 
 @configclass
 class X2FlatRobustEnvCfg(X2StairRobustEnvCfg):
@@ -280,7 +284,9 @@ class X2FlatRobustEnvCfg(X2StairRobustEnvCfg):
         self.scene.terrain.terrain_type = "plane"
 
         # Increase action smoothness penalty for flat-task deployment stability.
-        self.rewards.action_rate_l2.weight = -0.2
+        self.rewards.action_rate_l2.weight = -0.15
+        self.rewards.action_acc_l2.weight = -4e-2
+        self.rewards.joint_acc_l2.weight = -8e-4
 
 @configclass
 class X2FlatPlayEnvCfg(X2FlatEnvCfg):

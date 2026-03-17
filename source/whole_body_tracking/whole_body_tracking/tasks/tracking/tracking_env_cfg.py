@@ -366,6 +366,17 @@ class RewardsCfg:
         func=mdp.action_rate_l2, 
         weight=-1e-1                          # 负权重表示惩罚
     )  # 动作变化率L2惩罚，鼓励平滑动作
+
+    action_acc_l2 = RewTerm(
+        func=mdp.action_acc_l2,
+        weight=0.0
+    )  # 动作二阶差分L2惩罚，抑制甩动和急加急减
+
+    joint_acc_l2 = RewTerm(
+        func=mdp.joint_acc_l2,
+        weight=0.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )  # 关节加速度L2惩罚，抑制关节急加急减
     
     joint_limit = RewTerm(
         func=mdp.joint_pos_limits,
