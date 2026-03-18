@@ -271,13 +271,13 @@ class X2FlatEnvCfg(X2StairEnvCfg):
         self.rewards.joint_acc_l2.weight = -8e-4
         self.rewards.feet_min_distance = RewTerm(
             func=mdp.feet_min_distance_penalty,
-            weight=-2.0,
+            weight=-0.1,
             params={
                 "asset_cfg": SceneEntityCfg(
                     "robot",
                     body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
                 ),
-                "min_distance": 0.16,
+                "min_distance": 0.20,
                 "use_xy_distance": True,
             },
         )

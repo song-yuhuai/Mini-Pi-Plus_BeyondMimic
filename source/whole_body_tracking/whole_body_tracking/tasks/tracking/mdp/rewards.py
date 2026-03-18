@@ -179,6 +179,8 @@ def feet_min_distance_penalty(
     if use_xy_distance:
         feet_pos = feet_pos[..., :2]
 
-    feet_distance = torch.norm(feet_pos[:, 0] - feet_pos[:, 1], dim=-1)
+    # Use centimeters for penalty computation.
+    feet_distance = torch.norm(feet_pos[:, 0] - feet_pos[:, 1], dim=-1) * 100.0
+    min_distance = min_distance * 100.0
     distance_violation = torch.clamp(min_distance - feet_distance, min=0.0)
     return distance_violation * distance_violation

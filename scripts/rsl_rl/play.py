@@ -51,6 +51,7 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 import os
 import torch
+import yaml
 
 from rsl_rl.runners import OnPolicyRunner
 
@@ -136,6 +137,26 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             else ".*"
         )
         resume_path = get_checkpoint_path(log_root_path, run_dir_expr, checkpoint_expr)
+
+    print(f"[INFO] Resolved checkpoint: {resume_path}")
+    print(f"[INFO] Motion file: {env_cfg.commands.motion.motion_file}")
+
+    # Align command joint ordering with checkpoint-exported metadata when available.
+    # This avoids NPZ/robot index drift across code versions.
+    deploy_yaml_path = os.path.join(os.path.dirname(resume_path), "params", "deploy.yaml")
+    if os.path.isfile(deploy_yaml_path):
+        try:
+            with open(deploy_yaml_path, "r", encoding="utf-8") as f:
+                deploy_cfg = yaml.safe_load(f) or {}
+            deploy_joint_names = deploy_cfg.get("joint_names", None)
+            if isinstance(deploy_joint_names, list) and len(deploy_joint_names) > 0:
+                env_cfg.commands.motion.joint_names = deploy_joint_names
+                print(
+                    f"[INFO] Overriding motion joint_names from deploy.yaml ({len(deploy_joint_names)} joints): "
+                    f"{deploy_yaml_path}"
+                )
+        except Exception as err:
+            print(f"[WARN] Failed to load joint_names from deploy.yaml: {err}")
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
