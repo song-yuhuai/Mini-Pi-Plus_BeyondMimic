@@ -154,3 +154,31 @@ def joint_acc_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Ten
     env._joint_acc_prev_ep_len.copy_(env.episode_length_buf)
 
     return torch.sum(torch.square(joint_acc), dim=1)
+
+
+def feet_min_distance_penalty(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    min_distance: float,
+    use_xy_distance: bool = True,
+) -> torch.Tensor:
+    """Penalize feet getting closer than a minimum distance.
+
+    Expects ``asset_cfg.body_names`` to contain exactly two bodies:
+    [left_foot, right_foot].
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    body_ids = asset_cfg.body_ids
+
+    if isinstance(body_ids, slice) or len(body_ids) != 2:
+        raise ValueError(
+            "feet_min_distance_penalty expects exactly two body names in asset_cfg.body_names."
+        )
+
+    feet_pos = asset.data.body_pos_w[:, body_ids]
+    if use_xy_distance:
+        feet_pos = feet_pos[..., :2]
+
+    feet_distance = torch.norm(feet_pos[:, 0] - feet_pos[:, 1], dim=-1)
+    distance_violation = torch.clamp(min_distance - feet_distance, min=0.0)
+    return distance_violation * distance_violation

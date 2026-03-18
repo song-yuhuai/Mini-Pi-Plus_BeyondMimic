@@ -268,7 +268,19 @@ class X2FlatEnvCfg(X2StairEnvCfg):
         # Increase action smoothness penalty for flat-task deployment stability.
         self.rewards.action_rate_l2.weight = -0.15
         self.rewards.action_acc_l2.weight = -1e-2
-        self.rewards.joint_acc_l2.weight = -2e-4
+        self.rewards.joint_acc_l2.weight = -8e-4
+        self.rewards.feet_min_distance = RewTerm(
+            func=mdp.feet_min_distance_penalty,
+            weight=-2.0,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                ),
+                "min_distance": 0.16,
+                "use_xy_distance": True,
+            },
+        )
 
 @configclass
 class X2FlatRobustEnvCfg(X2StairRobustEnvCfg):
@@ -287,6 +299,18 @@ class X2FlatRobustEnvCfg(X2StairRobustEnvCfg):
         self.rewards.action_rate_l2.weight = -0.15
         self.rewards.action_acc_l2.weight = -4e-2
         self.rewards.joint_acc_l2.weight = -8e-4
+        self.rewards.feet_min_distance = RewTerm(
+            func=mdp.feet_min_distance_penalty,
+            weight=-2.0,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                ),
+                "min_distance": 0.12,
+                "use_xy_distance": True,
+            },
+        )
 
 @configclass
 class X2FlatPlayEnvCfg(X2FlatEnvCfg):
