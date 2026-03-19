@@ -268,7 +268,7 @@ class X2FlatEnvCfg(X2StairEnvCfg):
         # Increase action smoothness penalty for flat-task deployment stability.
         self.rewards.action_rate_l2.weight = -0.15
         self.rewards.action_acc_l2.weight = -1e-2
-        self.rewards.joint_acc_l2.weight = -5e-3
+        self.rewards.joint_acc_l2.weight = -2e-3
         self.rewards.feet_rect_overlap = RewTerm(
             func=mdp.feet_rect_overlap_penalty,
             weight=-0.1,
@@ -280,8 +280,17 @@ class X2FlatEnvCfg(X2StairEnvCfg):
                 "foot_length": 0.22,
                 "foot_width": 0.130,
                 "foot_center_offset_xy": (0.037, 0.0),
-                "safety_margin": 0.05,
+                "safety_margin": 0.025,
                 "area_in_cm2": True,
+            },
+        )
+        self.rewards.cog_tracking = RewTerm(
+            func=mdp.cog_tracking_reward,
+            weight=0.25,
+            params={
+                "asset_cfg": SceneEntityCfg("robot"),
+                "feet_body_names": ["left_ankle_roll_link", "right_ankle_roll_link"],
+                "sigma": 0.2,
             },
         )
 
@@ -302,6 +311,15 @@ class X2FlatRobustEnvCfg(X2StairRobustEnvCfg):
         self.rewards.action_rate_l2.weight = -0.15
         self.rewards.action_acc_l2.weight = -4e-2
         self.rewards.joint_acc_l2.weight = -8e-4
+        self.rewards.cog_tracking = RewTerm(
+            func=mdp.cog_tracking_reward,
+            weight=0.25,
+            params={
+                "asset_cfg": SceneEntityCfg("robot"),
+                "feet_body_names": ["left_ankle_roll_link", "right_ankle_roll_link"],
+                "sigma": 0.2,
+            },
+        )
 
 @configclass
 class X2FlatPlayEnvCfg(X2FlatEnvCfg):

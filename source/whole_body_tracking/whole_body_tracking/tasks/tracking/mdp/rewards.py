@@ -231,3 +231,38 @@ def feet_rect_overlap_penalty(
     if area_in_cm2:
         overlap_area = overlap_area * 10000.0
     return overlap_area * overlap_area
+
+
+def cog_tracking_reward(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    feet_body_names: tuple[str, str] | list[str],
+    sigma: float = 0.2,
+) -> torch.Tensor:
+    """Reward the XY projection of the center of gravity staying near the midpoint between the feet."""
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    if not hasattr(env, "_cog_tracking_body_masses"):
+        env._cog_tracking_body_masses = {}
+
+    mass = env._cog_tracking_body_masses.get(asset_cfg.name)
+    if mass is None:
+        mass = asset.root_physx_view.get_masses().clone().to(device=asset.data.body_pos_w.device, dtype=asset.data.body_pos_w.dtype)
+        if mass.ndim == 1:
+            mass = mass.unsqueeze(0)
+        env._cog_tracking_body_masses[asset_cfg.name] = mass
+
+    body_pos_w = asset.data.body_pos_w
+    if mass.shape[0] != body_pos_w.shape[0]:
+        mass = mass[0].unsqueeze(0).expand(body_pos_w.shape[0], -1)
+
+    total_mass = torch.sum(mass, dim=1, keepdim=True).clamp_min(1.0e-8)
+    cog_xy = torch.sum(mass.unsqueeze(-1) * body_pos_w, dim=1)[:, :2] / total_mass
+
+    foot_body_ids = asset.find_bodies(list(feet_body_names), preserve_order=True)[0]
+    if len(foot_body_ids) != 2:
+        raise ValueError("cog_tracking_reward expects exactly two foot body names.")
+
+    feet_mid_xy = asset.data.body_pos_w[:, foot_body_ids, :2].mean(dim=1)
+    dist = torch.norm(cog_xy - feet_mid_xy, dim=1)
+    return torch.exp(-(dist**2) / (sigma**2))
