@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
-from isaaclab.utils.math import quat_error_magnitude
+from isaaclab.utils.math import matrix_from_quat, quat_error_magnitude
 
 from whole_body_tracking.tasks.tracking.mdp.commands import MotionCommand
 
@@ -156,31 +156,78 @@ def joint_acc_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Ten
     return torch.sum(torch.square(joint_acc), dim=1)
 
 
-def feet_min_distance_penalty(
+def feet_rect_overlap_penalty(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
-    min_distance: float,
-    use_xy_distance: bool = True,
+    foot_length: float,
+    foot_width: float,
+    foot_center_offset_xy: tuple[float, float] = (0.0, 0.0),
+    safety_margin: float = 0.0,
+    area_in_cm2: bool = True,
 ) -> torch.Tensor:
-    """Penalize feet getting closer than a minimum distance.
+    """Penalty based on overlap area between two yaw-oriented foot rectangles on XY plane.
 
-    Expects ``asset_cfg.body_names`` to contain exactly two bodies:
-    [left_foot, right_foot].
+    The two feet are modeled as oriented rectangles centered at ankle links with an optional
+    local XY center offset and conservative size margin.
     """
     asset: Articulation = env.scene[asset_cfg.name]
     body_ids = asset_cfg.body_ids
-
     if isinstance(body_ids, slice) or len(body_ids) != 2:
-        raise ValueError(
-            "feet_min_distance_penalty expects exactly two body names in asset_cfg.body_names."
-        )
+        raise ValueError("feet_rect_overlap_penalty expects exactly two body names in asset_cfg.body_names.")
 
-    feet_pos = asset.data.body_pos_w[:, body_ids]
-    if use_xy_distance:
-        feet_pos = feet_pos[..., :2]
+    feet_pos_w = asset.data.body_pos_w[:, body_ids, :2]  # [N, 2, 2]
+    feet_quat_w = asset.data.body_quat_w[:, body_ids]  # [N, 2, 4]
 
-    # Use centimeters for penalty computation.
-    feet_distance = torch.norm(feet_pos[:, 0] - feet_pos[:, 1], dim=-1) * 100.0
-    min_distance = min_distance * 100.0
-    distance_violation = torch.clamp(min_distance - feet_distance, min=0.0)
-    return distance_violation * distance_violation
+    # Build world-frame XY axes from each foot local frame (yaw-aware, robust to roll/pitch).
+    feet_rot = matrix_from_quat(feet_quat_w.reshape(-1, 4)).reshape(-1, 2, 3, 3)  # [N, 2, 3, 3]
+    feet_x_axis_xy = feet_rot[:, :, :2, 0]  # local +X projected to XY, [N, 2, 2]
+    feet_y_axis_xy = feet_rot[:, :, :2, 1]  # local +Y projected to XY, [N, 2, 2]
+    feet_x_axis_xy = feet_x_axis_xy / feet_x_axis_xy.norm(dim=-1, keepdim=True).clamp_min(1.0e-8)
+    feet_y_axis_xy = feet_y_axis_xy / feet_y_axis_xy.norm(dim=-1, keepdim=True).clamp_min(1.0e-8)
+
+    offset_local = torch.tensor(foot_center_offset_xy, device=feet_pos_w.device, dtype=feet_pos_w.dtype)
+    feet_center_w = feet_pos_w + feet_x_axis_xy * offset_local[0] + feet_y_axis_xy * offset_local[1]
+
+    length_eff = foot_length + safety_margin
+    width_eff = foot_width + safety_margin
+    h_len = 0.5 * length_eff
+    h_wid = 0.5 * width_eff
+
+    c1 = feet_center_w[:, 0]
+    c2 = feet_center_w[:, 1]
+    u1 = feet_x_axis_xy[:, 0]
+    v1 = feet_y_axis_xy[:, 0]
+    u2 = feet_x_axis_xy[:, 1]
+    v2 = feet_y_axis_xy[:, 1]
+    t = c2 - c1
+
+    # SAT overlap mask on 4 candidate axes (u1, v1, u2, v2).
+    axes = torch.stack((u1, v1, u2, v2), dim=1)  # [N, 4, 2]
+    abs_t = torch.abs(torch.sum(t[:, None, :] * axes, dim=-1))  # [N, 4]
+    r1 = h_len * torch.abs(torch.sum(u1[:, None, :] * axes, dim=-1)) + h_wid * torch.abs(
+        torch.sum(v1[:, None, :] * axes, dim=-1)
+    )
+    r2 = h_len * torch.abs(torch.sum(u2[:, None, :] * axes, dim=-1)) + h_wid * torch.abs(
+        torch.sum(v2[:, None, :] * axes, dim=-1)
+    )
+    overlap_mask = torch.all((r1 + r2 - abs_t) > 0.0, dim=1)
+
+    # Area proxy in foot-1 local axes.
+    overlap_u1 = (
+        h_len
+        + h_len * torch.abs(torch.sum(u2 * u1, dim=-1))
+        + h_wid * torch.abs(torch.sum(v2 * u1, dim=-1))
+        - torch.abs(torch.sum(t * u1, dim=-1))
+    )
+    overlap_v1 = (
+        h_wid
+        + h_len * torch.abs(torch.sum(u2 * v1, dim=-1))
+        + h_wid * torch.abs(torch.sum(v2 * v1, dim=-1))
+        - torch.abs(torch.sum(t * v1, dim=-1))
+    )
+    overlap_area = torch.clamp(overlap_u1, min=0.0) * torch.clamp(overlap_v1, min=0.0)
+    overlap_area = overlap_area * overlap_mask
+
+    if area_in_cm2:
+        overlap_area = overlap_area * 10000.0
+    return overlap_area * overlap_area
