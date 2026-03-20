@@ -1,25 +1,34 @@
-import isaaclab.sim as sim_utils
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
-from isaaclab.assets import AssetBaseCfg
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import whole_body_tracking.tasks.tracking.mdp as mdp
 from whole_body_tracking.robots.x2 import X2_ACTION_SCALE, X2_CFG
+from whole_body_tracking.tasks.tracking.config.x2.curriculum_cfg import (
+    apply_x2_robust_curriculum,
+    disable_x2_curriculum,
+)
 from whole_body_tracking.tasks.tracking.tracking_env_cfg import TrackingEnvCfg
 
 
 @configclass
-class X2StairEnvCfg(TrackingEnvCfg):
+class X2BaseEnvCfg(TrackingEnvCfg):
+    """Flat-ground X2 tracking baseline."""
+
     def __post_init__(self):
         super().__post_init__()
 
         self.scene.robot = X2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.stair_step = None
+        self.scene.terrain.terrain_type = "plane"
+
         self.actions.joint_pos.scale = X2_ACTION_SCALE
-        # Keep full-joint control and lock motion-joint ordering to avoid NPZ/robot index mismatches.
         self.actions.joint_pos.joint_names = [".*"]
+        self.actions.joint_pos.clip = {".*": (-100.0, 100.0)}
+
         self.commands.motion.joint_names = [
             "left_hip_pitch_joint",
             "left_hip_roll_joint",
@@ -68,7 +77,6 @@ class X2StairEnvCfg(TrackingEnvCfg):
             "right_elbow_link",
             "right_wrist_yaw_link",
         ]
-        # Deterministic resets: no random spawn offsets/rotations/velocities/joint jitters.
         self.commands.motion.pose_range = {
             "x": (0.0, 0.0),
             "y": (0.0, 0.0),
@@ -86,9 +94,9 @@ class X2StairEnvCfg(TrackingEnvCfg):
             "yaw": (0.0, 0.0),
         }
         self.commands.motion.joint_position_range = (0.0, 0.0)
+        self.commands.motion.phase_start_count = 0
+        self.commands.motion.phase_end_count = -1
 
-        # BMIMIC-compatible actor observation layout:
-        # command + projected_gravity + base_ang_vel + joint_pos + joint_vel + actions
         self.observations.policy.motion_anchor_pos_b = ObsTerm(
             func=mdp.projected_gravity,
             params={"asset_cfg": SceneEntityCfg("robot")},
@@ -98,8 +106,6 @@ class X2StairEnvCfg(TrackingEnvCfg):
         self.observations.policy.motion_anchor_ori_b = None
         self.observations.policy.base_lin_vel = None
         self.observations.policy.enable_corruption = False
-
-        # Match X2 BMIMIC scaling and clipping conventions.
         self.observations.policy.command.clip = (-100.0, 100.0)
         self.observations.policy.command.scale = 1.0
         self.observations.policy.base_ang_vel.clip = (-100.0, 100.0)
@@ -111,54 +117,17 @@ class X2StairEnvCfg(TrackingEnvCfg):
         self.observations.policy.actions.clip = (-100.0, 100.0)
         self.observations.policy.actions.scale = 1.0
 
-        # Keep policy action clipping consistent with BMIMIC action_clip.
-        self.actions.joint_pos.clip = {".*": (-100.0, 100.0)}
-
-        # Mimic phase window used by X2 get-up configs.
-        self.commands.motion.phase_start_count = 0
-        self.commands.motion.phase_end_count = -1
-
-        # Single stair block for one-step-up motions.
-        # Height = 0.15m, top surface at z = 0.15.
-        self.scene.stair_step = AssetBaseCfg(
-            prim_path="{ENV_REGEX_NS}/StairStep",
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.60, -0.4, 0.075)),
-            spawn=sim_utils.CuboidCfg(
-                size=(0.40, 1.20, 0.15),
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                    kinematic_enabled=True,
-                    disable_gravity=True,
-                ),
-                collision_props=sim_utils.CollisionPropertiesCfg(
-                    contact_offset=0.02,
-                    rest_offset=0.0,
-                ),
-                physics_material=sim_utils.RigidBodyMaterialCfg(
-                    friction_combine_mode="multiply",
-                    restitution_combine_mode="multiply",
-                    static_friction=1.2,
-                    dynamic_friction=1.0,
-                    restitution=0.0,
-                ),
-            ),
-        )
-
-        # Camera setup.
         self.viewer.eye = (3.2, 2.5, 2.2)
         self.viewer.lookat = (0.8, 0.0, 0.9)
         self.viewer.origin_type = "world"
         self.viewer.asset_name = None
         self.scene.contact_forces.debug_vis = False
 
-        # Stair task tuning.
         self.rewards.motion_body_pos.weight = 1.6
         self.rewards.motion_body_pos.params["std"] = 0.12
-        self.terminations.ee_body_pos.params["body_names"] = [
-            "left_ankle_roll_link",
-            "right_ankle_roll_link",
-            "left_elbow_link",
-            "right_elbow_link",
-        ]
+        self.rewards.action_rate_l2.weight = -0.18
+        self.rewards.action_acc_l2.weight = -1e-2
+        self.rewards.joint_acc_l2.weight = -5e-3
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
             "contact_forces",
             body_names=[
@@ -183,6 +152,37 @@ class X2StairEnvCfg(TrackingEnvCfg):
                 "target": 0.0,
             },
         )
+        self.rewards.feet_rect_overlap = RewTerm(
+            func=mdp.feet_rect_overlap_penalty,
+            weight=-0.1,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                ),
+                "foot_length": 0.22,
+                "foot_width": 0.130,
+                "foot_center_offset_xy": (0.037, 0.0),
+                "safety_margin": 0.02,
+                "area_in_cm2": True,
+            },
+        )
+        self.rewards.cog_tracking = RewTerm(
+            func=mdp.cog_tracking_reward,
+            weight=0.25,
+            params={
+                "asset_cfg": SceneEntityCfg("robot"),
+                "feet_body_names": ["left_ankle_roll_link", "right_ankle_roll_link"],
+                "sigma": 0.2,
+            },
+        )
+
+        self.terminations.ee_body_pos.params["body_names"] = [
+            "left_ankle_roll_link",
+            "right_ankle_roll_link",
+            "left_elbow_link",
+            "right_elbow_link",
+        ]
 
         self.events.base_com = EventTerm(
             func=mdp.randomize_rigid_body_com,
@@ -196,13 +196,41 @@ class X2StairEnvCfg(TrackingEnvCfg):
 
 
 @configclass
-class X2StairRobustEnvCfg(X2StairEnvCfg):
-    """BFM-inspired robust variant on top of fixed one-stair task."""
+class X2RobustEnvCfg(X2BaseEnvCfg):
+    """Flat-ground X2 tracking robust variant."""
 
     def __post_init__(self):
         super().__post_init__()
 
-        # Keep reset location deterministic; add only mild dynamics randomization.
+        self.observations.policy.enable_corruption = True
+        self.observations.policy.motion_anchor_pos_b.noise = Unoise(n_min=-0.01, n_max=0.01)
+        self.observations.policy.base_ang_vel.noise = Unoise(n_min=-0.03, n_max=0.03)
+        self.observations.policy.joint_pos.noise = Unoise(n_min=-0.003, n_max=0.003)
+        self.observations.policy.joint_vel.noise = Unoise(n_min=-0.12, n_max=0.12)
+        self.observations.policy.actions.noise = Unoise(n_min=-0.005, n_max=0.005)
+
+        self.commands.motion.pose_range = {
+            "x": (-0.02, 0.02),
+            "y": (-0.03, 0.03),
+            "z": (-0.005, 0.005),
+            "roll": (-0.06, 0.06),
+            "pitch": (-0.04, 0.04),
+            "yaw": (-0.08, 0.08),
+        }
+        self.commands.motion.velocity_range = {
+            "x": (-0.2, 0.2),
+            "y": (-0.2, 0.2),
+            "z": (-0.1, 0.1),
+            "roll": (-0.25, 0.25),
+            "pitch": (-0.2, 0.2),
+            "yaw": (-0.3, 0.3),
+        }
+        self.commands.motion.joint_position_range = (-0.05, 0.05)
+
+        for actuator_cfg in self.scene.robot.actuators.values():
+            actuator_cfg.min_delay = 0
+            actuator_cfg.max_delay = 2
+
         self.events.physics_material = EventTerm(
             func=mdp.randomize_rigid_body_material,
             mode="startup",
@@ -222,112 +250,23 @@ class X2StairRobustEnvCfg(X2StairEnvCfg):
                 "com_range": {"x": (-0.01, 0.01), "y": (-0.015, 0.015), "z": (-0.01, 0.01)},
             },
         )
-
-        # Conditional pushes for disturbance recovery, instead of pushing every env each time.
         self.events.push_robot = EventTerm(
             func=mdp.conditional_push_by_setting_velocity,
             mode="interval",
             interval_range_s=(2.0, 4.0),
             params={
                 "velocity_range": {
-                    "x": (-0.3, 0.3),
-                    "y": (-0.3, 0.3),
-                    "z": (-0.1, 0.1),
-                    "roll": (-0.35, 0.35),
-                    "pitch": (-0.35, 0.35),
-                    "yaw": (-0.45, 0.45),
+                    "x": (-0.08, 0.08),
+                    "y": (-0.08, 0.08),
+                    "z": (-0.03, 0.03),
+                    "roll": (-0.10, 0.10),
+                    "pitch": (-0.10, 0.10),
+                    "yaw": (-0.12, 0.12),
                 },
                 "condition_func": mdp.random_condition,
-                "condition_params": {"probability": 0.35},
+                "condition_params": {"probability": 0.10},
             },
         )
-
-        # Slightly more recovery-friendly shaping.
-        self.rewards.action_rate_l2.weight = -5e-2
-        self.rewards.action_acc_l2.weight = -1e-2
-        self.rewards.joint_acc_l2.weight = -2e-4
-        self.rewards.motion_body_lin_vel.weight = 0.8
-        self.rewards.motion_body_ang_vel.weight = 0.8
-        self.terminations.anchor_pos.params["threshold"] = 0.30
-        self.terminations.ee_body_pos.params["threshold"] = 0.30
-
-
-@configclass
-class X2FlatEnvCfg(X2StairEnvCfg):
-    """Flat-ground X2 tracking variant with no stair/chassis obstacle."""
-
-    def __post_init__(self):
-        super().__post_init__()
-
-        # Keep the same tracking task configuration, but remove the stair obstacle.
-        self.scene.stair_step = None
-
-        # Explicitly enforce flat terrain.
-        self.scene.terrain.terrain_type = "plane"
-
-        # Increase action smoothness penalty for flat-task deployment stability.
-        self.rewards.action_rate_l2.weight = -0.15
-        self.rewards.action_acc_l2.weight = -1e-2
-        self.rewards.joint_acc_l2.weight = -2e-3
-        self.rewards.feet_rect_overlap = RewTerm(
-            func=mdp.feet_rect_overlap_penalty,
-            weight=-0.1,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot",
-                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
-                ),
-                "foot_length": 0.22,
-                "foot_width": 0.130,
-                "foot_center_offset_xy": (0.037, 0.0),
-                "safety_margin": 0.025,
-                "area_in_cm2": True,
-            },
-        )
-        self.rewards.cog_tracking = RewTerm(
-            func=mdp.cog_tracking_reward,
-            weight=0.25,
-            params={
-                "asset_cfg": SceneEntityCfg("robot"),
-                "feet_body_names": ["left_ankle_roll_link", "right_ankle_roll_link"],
-                "sigma": 0.2,
-            },
-        )
-
-@configclass
-class X2FlatRobustEnvCfg(X2StairRobustEnvCfg):
-    """Flat-ground X2 tracking variant with no stair/chassis obstacle."""
-
-    def __post_init__(self):
-        super().__post_init__()
-
-        # Keep the same tracking task configuration, but remove the stair obstacle.
-        self.scene.stair_step = None
-
-        # Explicitly enforce flat terrain.
-        self.scene.terrain.terrain_type = "plane"
-
-        # Re-enable conservative reset-side randomization for lateral-balance robustness.
-        # (X2StairEnvCfg zeroes these ranges for deterministic resets.)
-        self.commands.motion.pose_range = {
-            "x": (-0.02, 0.02),
-            "y": (-0.03, 0.03),
-            "z": (-0.005, 0.005),
-            "roll": (-0.06, 0.06),
-            "pitch": (-0.04, 0.04),
-            "yaw": (-0.08, 0.08),
-        }
-        self.commands.motion.velocity_range = {
-            "x": (-0.2, 0.2),
-            "y": (-0.2, 0.2),
-            "z": (-0.1, 0.1),
-            "roll": (-0.25, 0.25),
-            "pitch": (-0.2, 0.2),
-            "yaw": (-0.3, 0.3),
-        }
-        self.commands.motion.joint_position_range = (-0.05, 0.05)
-
-        # Re-enable small joint default-offset randomization (calibration-bias robustness).
         self.events.add_joint_default_pos = EventTerm(
             func=mdp.randomize_joint_default_pos,
             mode="startup",
@@ -338,39 +277,17 @@ class X2FlatRobustEnvCfg(X2StairRobustEnvCfg):
             },
         )
 
+        self.rewards.action_rate_l2.weight = -0.18
+        self.rewards.joint_acc_l2.weight = -5e-3
+        self.rewards.motion_body_lin_vel.weight = 0.8
+        self.rewards.motion_body_ang_vel.weight = 0.8
+        self.terminations.anchor_pos.params["threshold"] = 0.30
+        self.terminations.ee_body_pos.params["threshold"] = 0.30
+        apply_x2_robust_curriculum(self)
 
-
-        # Increase action smoothness penalty for flat-task deployment stability.
-        self.rewards.action_rate_l2.weight = -0.15
-        self.rewards.action_acc_l2.weight = -1e-2
-        self.rewards.joint_acc_l2.weight = -2e-3
-        self.rewards.feet_rect_overlap = RewTerm(
-            func=mdp.feet_rect_overlap_penalty,
-            weight=-0.1,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot",
-                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
-                ),
-                "foot_length": 0.22,
-                "foot_width": 0.130,
-                "foot_center_offset_xy": (0.037, 0.0),
-                "safety_margin": 0.025,
-                "area_in_cm2": True,
-            },
-        )
-        self.rewards.cog_tracking = RewTerm(
-            func=mdp.cog_tracking_reward,
-            weight=0.25,
-            params={
-                "asset_cfg": SceneEntityCfg("robot"),
-                "feet_body_names": ["left_ankle_roll_link", "right_ankle_roll_link"],
-                "sigma": 0.2,
-            },
-        )
 
 @configclass
-class X2FlatPlayEnvCfg(X2FlatEnvCfg):
+class X2BasePlayEnvCfg(X2BaseEnvCfg):
     """Play-only X2 flat config with deterministic resets from the first motion frame."""
 
     def __post_init__(self):
@@ -379,11 +296,26 @@ class X2FlatPlayEnvCfg(X2FlatEnvCfg):
         self.commands.motion.phase_end_count = -1
         self.commands.motion.fixed_phase_reset = True
 
-        # Keep replay stable: disable early-failure terminations during play.
         self.terminations.anchor_pos = None
         self.terminations.anchor_ori = None
         self.terminations.ee_body_pos = None
 
-        # Disable domain randomization/disturbances during play.
         self.events.physics_material = None
         self.events.push_robot = None
+        disable_x2_curriculum(self)
+
+
+@configclass
+class X2RobustPlayEnvCfg(X2RobustEnvCfg):
+    """Play-only X2 robust flat config with deterministic phase resets."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.motion.phase_start_count = 0
+        self.commands.motion.phase_end_count = -1
+        self.commands.motion.fixed_phase_reset = True
+
+        self.terminations.anchor_pos = None
+        self.terminations.anchor_ori = None
+        self.terminations.ee_body_pos = None
+        disable_x2_curriculum(self)

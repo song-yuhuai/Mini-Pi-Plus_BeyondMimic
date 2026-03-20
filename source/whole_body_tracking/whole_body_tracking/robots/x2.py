@@ -1,8 +1,8 @@
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
 from whole_body_tracking.assets import ASSET_DIR
+from whole_body_tracking.robots.actuator import DelayedImplicitActuatorCfg
 
 NATURAL_FREQ = 10 * 2.0 * 3.1415926535  # 10Hz
 DAMPING_RATIO = 2.0
@@ -44,7 +44,7 @@ X2_CFG = ArticulationCfg(
     ),
     soft_joint_pos_limit_factor=0.9,
     actuators={
-        "N7520-22.5": ImplicitActuatorCfg(
+        "N7520-22.5": DelayedImplicitActuatorCfg(
             joint_names_expr=[".*_hip_roll_joint", ".*_hip_yaw_joint", "waist_yaw_joint"],
             effort_limit_sim=120,
             velocity_limit_sim=12.0,
@@ -60,7 +60,7 @@ X2_CFG = ArticulationCfg(
             },
             armature=0.01,
         ),
-        "N7520-27": ImplicitActuatorCfg(
+        "N7520-27": DelayedImplicitActuatorCfg(
             joint_names_expr=[".*_hip_pitch_joint", ".*_knee_joint"],
             effort_limit_sim=120,
             velocity_limit_sim=12.0,
@@ -74,7 +74,7 @@ X2_CFG = ArticulationCfg(
             },
             armature=0.01,
         ),
-        "N5047": ImplicitActuatorCfg(
+        "N5047": DelayedImplicitActuatorCfg(
             joint_names_expr=[
                 ".*_ankle_pitch_joint",
                 ".*_ankle_roll_joint",
@@ -132,7 +132,7 @@ X2_CFG = ArticulationCfg(
             },
             armature=0.01,
         ),
-        "N24-small": ImplicitActuatorCfg(
+        "N24-small": DelayedImplicitActuatorCfg(
             joint_names_expr=[
                 ".*_wrist_pitch_joint",
                 ".*_wrist_roll_joint",

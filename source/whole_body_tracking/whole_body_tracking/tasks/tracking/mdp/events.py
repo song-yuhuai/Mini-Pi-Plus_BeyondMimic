@@ -12,6 +12,96 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
 
+def _get_curriculum_alpha(env: ManagerBasedEnv, start_step: int, end_step: int) -> float:
+    """Return a normalized curriculum progress in ``[0, 1]`` based on the global env step."""
+    step = getattr(env, "common_step_counter", 0)
+    if isinstance(step, torch.Tensor):
+        step = int(step.item())
+    else:
+        step = int(step)
+
+    if end_step <= start_step:
+        return 1.0
+    if step <= start_step:
+        return 0.0
+    if step >= end_step:
+        return 1.0
+    return float(step - start_step) / float(end_step - start_step)
+
+
+def _lerp_scalar(start: float, end: float, alpha: float) -> float:
+    return (1.0 - alpha) * start + alpha * end
+
+
+def _lerp_range(
+    start_range: tuple[float, float], target_range: tuple[float, float], alpha: float
+) -> tuple[float, float]:
+    return (
+        _lerp_scalar(start_range[0], target_range[0], alpha),
+        _lerp_scalar(start_range[1], target_range[1], alpha),
+    )
+
+
+def _lerp_range_dict(
+    start_ranges: dict[str, tuple[float, float]],
+    target_ranges: dict[str, tuple[float, float]],
+    alpha: float,
+) -> dict[str, tuple[float, float]]:
+    keys = target_ranges.keys() | start_ranges.keys()
+    return {
+        key: _lerp_range(start_ranges.get(key, (0.0, 0.0)), target_ranges.get(key, (0.0, 0.0)), alpha)
+        for key in keys
+    }
+
+
+def _set_term_noise(term, magnitude: float) -> None:
+    if term is None or getattr(term, "noise", None) is None:
+        return
+    term.noise.n_min = -magnitude
+    term.noise.n_max = magnitude
+
+
+def _get_motion_command(env: ManagerBasedEnv, command_name: str = "motion"):
+    return env.command_manager.get_term(command_name)
+
+
+def _performance_is_good(
+    env: ManagerBasedEnv,
+    command_name: str = "motion",
+    min_anchor_good_ratio: float = 0.75,
+    max_body_pos_error: float = 0.18,
+    max_ori_error: float = 0.22,
+) -> bool:
+    """Check whether the current batch performance is good enough to unlock more difficulty."""
+    motion_command = _get_motion_command(env, command_name)
+    anchor_good_ratio = motion_command.anchor_conditions_good.float().mean().item()
+    body_pos_error = motion_command.metrics["error_body_pos"].mean().item()
+    ori_error = motion_command.metrics["ori_error"].mean().item()
+    return (
+        anchor_good_ratio >= min_anchor_good_ratio
+        and body_pos_error <= max_body_pos_error
+        and ori_error <= max_ori_error
+    )
+
+
+def _update_hybrid_curriculum_state(
+    env: ManagerBasedEnv,
+    state_key: str,
+    target_alpha: float,
+    performance_gate: bool,
+    max_increase_per_step: float,
+) -> float:
+    """Keep a monotonic curriculum state that advances only when performance is good."""
+    if not hasattr(env, "_curriculum_state"):
+        env._curriculum_state = {}
+
+    current_alpha = float(env._curriculum_state.get(state_key, 0.0))
+    if performance_gate:
+        current_alpha = min(target_alpha, current_alpha + max_increase_per_step)
+    env._curriculum_state[state_key] = max(current_alpha, 0.0)
+    return env._curriculum_state[state_key]
+
+
 def randomize_joint_default_pos(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor | None,
@@ -345,4 +435,137 @@ def update_force_curriculum(
     
     # 调用 MotionCommand 的 update_force_curriculum 方法
     motion_command.update_force_curriculum(env_ids)
+
+
+def update_push_curriculum(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
+    event_name: str = "push_robot",
+    command_name: str = "motion",
+    start_step: int = 0,
+    end_step: int = 10000,
+    start_probability: float = 0.1,
+    target_probability: float = 0.35,
+    start_velocity_range: dict[str, tuple[float, float]] | None = None,
+    target_velocity_range: dict[str, tuple[float, float]] | None = None,
+    min_anchor_good_ratio: float = 0.75,
+    max_body_pos_error: float = 0.18,
+    max_ori_error: float = 0.22,
+    max_increase_per_step: float = 0.01,
+) -> None:
+    """Ramp push disturbance with a time cap and a performance gate."""
+    del env_ids
+    event_term = getattr(env.cfg.events, event_name, None)
+    if event_term is None:
+        return
+
+    time_alpha = _get_curriculum_alpha(env, start_step, end_step)
+    performance_gate = _performance_is_good(
+        env,
+        command_name=command_name,
+        min_anchor_good_ratio=min_anchor_good_ratio,
+        max_body_pos_error=max_body_pos_error,
+        max_ori_error=max_ori_error,
+    )
+    alpha = _update_hybrid_curriculum_state(
+        env,
+        state_key=f"{event_name}_curriculum_alpha",
+        target_alpha=time_alpha,
+        performance_gate=performance_gate,
+        max_increase_per_step=max_increase_per_step,
+    )
+    target_velocity_range = target_velocity_range or {}
+    if start_velocity_range is None:
+        start_velocity_range = {key: (0.0, 0.0) for key in target_velocity_range}
+
+    event_term.params["velocity_range"] = _lerp_range_dict(start_velocity_range, target_velocity_range, alpha)
+    condition_params = event_term.params.setdefault("condition_params", {})
+    condition_params["probability"] = _lerp_scalar(start_probability, target_probability, alpha)
+
+
+def update_actuator_delay_curriculum(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
+    asset_name: str = "robot",
+    command_name: str = "motion",
+    start_step: int = 0,
+    end_step: int = 10000,
+    start_delay: int = 0,
+    target_delay: int = 2,
+    min_anchor_good_ratio: float = 0.8,
+    max_body_pos_error: float = 0.16,
+    max_ori_error: float = 0.18,
+    max_increase_per_step: float = 0.01,
+) -> None:
+    """Ramp actuator delay with a time cap and a performance gate."""
+    del env_ids
+    asset_cfg = getattr(env.cfg.scene, asset_name, None)
+    if asset_cfg is None:
+        return
+
+    time_alpha = _get_curriculum_alpha(env, start_step, end_step)
+    performance_gate = _performance_is_good(
+        env,
+        command_name=command_name,
+        min_anchor_good_ratio=min_anchor_good_ratio,
+        max_body_pos_error=max_body_pos_error,
+        max_ori_error=max_ori_error,
+    )
+    alpha = _update_hybrid_curriculum_state(
+        env,
+        state_key=f"{asset_name}_delay_curriculum_alpha",
+        target_alpha=time_alpha,
+        performance_gate=performance_gate,
+        max_increase_per_step=max_increase_per_step,
+    )
+    max_delay = int(round(_lerp_scalar(start_delay, target_delay, alpha)))
+    for actuator_cfg in asset_cfg.actuators.values():
+        actuator_cfg.min_delay = 0
+        actuator_cfg.max_delay = max_delay
+
+
+def update_observation_noise_curriculum(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
+    group_name: str = "policy",
+    command_name: str = "motion",
+    start_step: int = 0,
+    end_step: int = 10000,
+    start_noise: dict[str, float] | None = None,
+    target_noise: dict[str, float] | None = None,
+    min_anchor_good_ratio: float = 0.82,
+    max_body_pos_error: float = 0.14,
+    max_ori_error: float = 0.16,
+    max_increase_per_step: float = 0.01,
+) -> None:
+    """Ramp observation noise with a time cap and a performance gate."""
+    del env_ids
+    obs_group = getattr(env.cfg.observations, group_name, None)
+    if obs_group is None:
+        return
+
+    time_alpha = _get_curriculum_alpha(env, start_step, end_step)
+    performance_gate = _performance_is_good(
+        env,
+        command_name=command_name,
+        min_anchor_good_ratio=min_anchor_good_ratio,
+        max_body_pos_error=max_body_pos_error,
+        max_ori_error=max_ori_error,
+    )
+    alpha = _update_hybrid_curriculum_state(
+        env,
+        state_key=f"{group_name}_noise_curriculum_alpha",
+        target_alpha=time_alpha,
+        performance_gate=performance_gate,
+        max_increase_per_step=max_increase_per_step,
+    )
+    target_noise = target_noise or {}
+    start_noise = start_noise or {key: 0.0 for key in target_noise}
+
+    for term_name, target_magnitude in target_noise.items():
+        term_cfg = getattr(obs_group, term_name, None)
+        if term_cfg is None:
+            continue
+        magnitude = _lerp_scalar(start_noise.get(term_name, 0.0), target_magnitude, alpha)
+        _set_term_noise(term_cfg, magnitude)
    

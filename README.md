@@ -108,12 +108,28 @@ python scripts/rsl_rl/play.py --task=Tracking-Flat-PI-Plus-Wo-v0 --checkpoint {l
 
 Use this section if you want to train and evaluate the FB-Zero pipeline (`train_fb_zero.py` / `infer_fb_zero.py`) instead of PPO.
 
+#### X2 Task Presets
+
+The X2 flat-ground config currently provides these task presets:
+
+- `Tracking-Flat-X2-v0`: base training task for standard flat-ground training.
+- `Tracking-Flat-X2-Robust-v0`: robust training task with reset randomization, COM/material randomization, push disturbances, and joint default offset randomization.
+- `Tracking-Flat-X2-Play-v0`: base play task with deterministic phase reset, no early-failure terminations, and no disturbances.
+- `Tracking-Flat-X2-Robust-Play-v0`: robust play task that keeps robust randomization/disturbance settings while also using deterministic phase reset and no early-failure terminations.
+
+Typical usage:
+
+- Train a normal policy with `Tracking-Flat-X2-v0`.
+- Train a robust policy with `Tracking-Flat-X2-Robust-v0`.
+- Play or record a normal policy with `Tracking-Flat-X2-Play-v0`.
+- Play or stress-test a robust policy with `Tracking-Flat-X2-Robust-Play-v0`.
+
 1. Train FB-Zero from scratch:
 
 ```bash
 # Paper-style defaults are already set in train_fb_zero.py.
 PYTHONUNBUFFERED=1 python scripts/offpolicy/train_fb_zero.py \
-  --task=Tracking-Stair-X2-v0 \
+  --task=Tracking-Flat-X2-v0 \
   --motion_file=source/motion/x2/npz/step_low_far.npz \
   --headless
 ```
@@ -122,10 +138,13 @@ Optional override examples:
 
 ```bash
 # Disable compiled update path for debugging
-python scripts/offpolicy/train_fb_zero.py --task=Tracking-Stair-X2-v0 --motion_file=source/motion/x2/npz/step_low_far.npz --headless --no-compile-update
+python scripts/offpolicy/train_fb_zero.py --task=Tracking-Flat-X2-v0 --motion_file=source/motion/x2/npz/step_low_far.npz --headless --no-compile-update
 
 # Smaller-GPU profile
-python scripts/offpolicy/train_fb_zero.py --task=Tracking-Stair-X2-v0 --motion_file=source/motion/x2/npz/step_low_far.npz --headless --num_envs=256 --batch_size=512 --num_updates=8
+python scripts/offpolicy/train_fb_zero.py --task=Tracking-Flat-X2-v0 --motion_file=source/motion/x2/npz/step_low_far.npz --headless --num_envs=256 --batch_size=512 --num_updates=8
+
+# Robust profile
+python scripts/offpolicy/train_fb_zero.py --task=Tracking-Flat-X2-Robust-v0 --motion_file=source/motion/x2/npz/step_low_far.npz --headless
 ```
 
 Expected outputs:
@@ -147,7 +166,7 @@ Expected outputs:
 
 ```bash
 python scripts/offpolicy/train_fb_zero.py \
-  --task=Tracking-Stair-X2-v0 \
+  --task=Tracking-Flat-X2-v0 \
   --motion_file=source/motion/x2/npz/step_low_far.npz \
   --resume logs/offpolicy_fb/{run_name}/checkpoints/final.pt \
   --num_iterations=40000 \
@@ -159,7 +178,7 @@ python scripts/offpolicy/train_fb_zero.py \
 ```bash
 python scripts/offpolicy/infer_fb_zero.py \
   --checkpoint logs/offpolicy_fb/{run_name}/checkpoints/final.pt \
-  --task=Tracking-Stair-X2-v0 \
+  --task=Tracking-Flat-X2-Play-v0 \
   --motion_file=source/motion/x2/npz/step_low_far.npz \
   --num_envs=1 \
   --mode=tracking \
@@ -169,8 +188,9 @@ python scripts/offpolicy/infer_fb_zero.py \
 Optional latent modes:
 
 ```bash
-python scripts/offpolicy/infer_fb_zero.py --checkpoint {ckpt} --task=Tracking-Stair-X2-v0 --mode=goal --goal_index=0
-python scripts/offpolicy/infer_fb_zero.py --checkpoint {ckpt} --task=Tracking-Stair-X2-v0 --mode=reward --reward_samples=4096 --reward_temperature=10.0
+python scripts/offpolicy/infer_fb_zero.py --checkpoint {ckpt} --task=Tracking-Flat-X2-Play-v0 --mode=goal --goal_index=0
+python scripts/offpolicy/infer_fb_zero.py --checkpoint {ckpt} --task=Tracking-Flat-X2-Play-v0 --mode=reward --reward_samples=4096 --reward_temperature=10.0
+python scripts/offpolicy/infer_fb_zero.py --checkpoint {ckpt} --task=Tracking-Flat-X2-Robust-Play-v0 --motion_file=source/motion/x2/npz/step_low_far.npz --num_envs=1 --mode=tracking
 ```
 
 Expected outputs:
@@ -183,7 +203,7 @@ Expected outputs:
 ```bash
 python scripts/offpolicy/eval_fb_zero.py \
   --checkpoint logs/offpolicy_fb/{run_name}/checkpoints/final.pt \
-  --task=Tracking-Stair-X2-v0 \
+  --task=Tracking-Flat-X2-Play-v0 \
   --motion_file=source/motion/x2/npz/step_low_far.npz \
   --mode=tracking \
   --steps=3000 \
@@ -200,7 +220,7 @@ Expected outputs:
 ```bash
 python scripts/offpolicy/eval_fb_zero_tracking.py \
   --checkpoint logs/offpolicy_fb/{run_name}/checkpoints/final.pt \
-  --task=Tracking-Stair-X2-v0 \
+  --task=Tracking-Flat-X2-Robust-Play-v0 \
   --motion_file=source/motion/x2/npz/step_low_far.npz \
   --num_envs=1 \
   --steps=3000 \
@@ -331,6 +351,26 @@ python scripts/csv_to_npz.py --robot pi_plus --input_file source/motion/hightorq
 # 数据播放
 python scripts/replay_npz.py --robot pi_plus --motion_file source/motion/hightorque/pi_plus/npz/{motion_name}.npz 
 ```
+
+### X2 任务用法
+
+当前 X2 平地配置提供以下 4 个 task：
+
+- `Tracking-Flat-X2-v0`
+  - 基础训练任务，适合常规 flat-ground 训练。
+- `Tracking-Flat-X2-Robust-v0`
+  - 鲁棒训练任务，包含 reset 随机化、质心随机化、接触材质随机化、push 扰动和关节默认偏置随机化。
+- `Tracking-Flat-X2-Play-v0`
+  - 基础回放任务，使用固定 phase reset，关闭提前终止和扰动，适合看动作效果、录视频和调试。
+- `Tracking-Flat-X2-Robust-Play-v0`
+  - 鲁棒回放任务，保留 robust 的随机化和扰动，同时关闭提前终止并固定 phase reset，适合观察 robust 策略在扰动下的表现。
+
+推荐使用方式：
+
+- 训练普通策略：`Tracking-Flat-X2-v0`
+- 训练鲁棒策略：`Tracking-Flat-X2-Robust-v0`
+- 回放普通策略：`Tracking-Flat-X2-Play-v0`
+- 回放或压测鲁棒策略：`Tracking-Flat-X2-Robust-Play-v0`
 
 ### 模型训练
 

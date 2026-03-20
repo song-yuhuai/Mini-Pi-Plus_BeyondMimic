@@ -461,8 +461,11 @@ class CurriculumCfg:
     包含力课程学习等自适应训练策略。
     """
 
-    # 力课程学习项 - 根据机器人表现动态调整辅助力
-    pass
+    # 默认不开启，具体任务按需注册课程项
+    push_disturbance = None
+    actuator_delay = None
+    observation_noise = None
+    force = None
 
 ##
 # 环境配置
