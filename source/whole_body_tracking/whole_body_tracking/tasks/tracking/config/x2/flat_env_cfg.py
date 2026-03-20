@@ -307,10 +307,58 @@ class X2FlatRobustEnvCfg(X2StairRobustEnvCfg):
         # Explicitly enforce flat terrain.
         self.scene.terrain.terrain_type = "plane"
 
+        # Re-enable conservative reset-side randomization for lateral-balance robustness.
+        # (X2StairEnvCfg zeroes these ranges for deterministic resets.)
+        self.commands.motion.pose_range = {
+            "x": (-0.02, 0.02),
+            "y": (-0.03, 0.03),
+            "z": (-0.005, 0.005),
+            "roll": (-0.06, 0.06),
+            "pitch": (-0.04, 0.04),
+            "yaw": (-0.08, 0.08),
+        }
+        self.commands.motion.velocity_range = {
+            "x": (-0.2, 0.2),
+            "y": (-0.2, 0.2),
+            "z": (-0.1, 0.1),
+            "roll": (-0.25, 0.25),
+            "pitch": (-0.2, 0.2),
+            "yaw": (-0.3, 0.3),
+        }
+        self.commands.motion.joint_position_range = (-0.05, 0.05)
+
+        # Re-enable small joint default-offset randomization (calibration-bias robustness).
+        self.events.add_joint_default_pos = EventTerm(
+            func=mdp.randomize_joint_default_pos,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
+                "pos_distribution_params": (-0.005, 0.005),
+                "operation": "add",
+            },
+        )
+
+
+
         # Increase action smoothness penalty for flat-task deployment stability.
         self.rewards.action_rate_l2.weight = -0.15
-        self.rewards.action_acc_l2.weight = -4e-2
-        self.rewards.joint_acc_l2.weight = -8e-4
+        self.rewards.action_acc_l2.weight = -1e-2
+        self.rewards.joint_acc_l2.weight = -2e-3
+        self.rewards.feet_rect_overlap = RewTerm(
+            func=mdp.feet_rect_overlap_penalty,
+            weight=-0.1,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                ),
+                "foot_length": 0.22,
+                "foot_width": 0.130,
+                "foot_center_offset_xy": (0.037, 0.0),
+                "safety_margin": 0.025,
+                "area_in_cm2": True,
+            },
+        )
         self.rewards.cog_tracking = RewTerm(
             func=mdp.cog_tracking_reward,
             weight=0.25,
