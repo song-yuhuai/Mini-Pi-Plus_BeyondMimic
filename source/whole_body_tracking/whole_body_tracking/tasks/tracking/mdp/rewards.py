@@ -156,24 +156,67 @@ def joint_acc_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Ten
     return torch.sum(torch.square(joint_acc), dim=1)
 
 
-def feet_rect_overlap_penalty(
+def _point_to_segment_distance_sq_2d(points: torch.Tensor, seg_a: torch.Tensor, seg_b: torch.Tensor) -> torch.Tensor:
+    """Batched squared distance from 2D points to 2D segments.
+
+    Args:
+        points: [N, 2]
+        seg_a: [N, 2]
+        seg_b: [N, 2]
+    Returns:
+        distance_sq: [N]
+    """
+    ab = seg_b - seg_a
+    ap = points - seg_a
+    denom = torch.sum(ab * ab, dim=-1).clamp_min(1.0e-8)
+    t = torch.sum(ap * ab, dim=-1) / denom
+    t = torch.clamp(t, 0.0, 1.0)
+    proj = seg_a + t.unsqueeze(-1) * ab
+    return torch.sum((points - proj) ** 2, dim=-1)
+
+
+def _segments_intersect_2d(a0: torch.Tensor, a1: torch.Tensor, b0: torch.Tensor, b1: torch.Tensor) -> torch.Tensor:
+    """Batched segment intersection test in 2D (non-collinear case + tolerant boundaries)."""
+    r = a1 - a0
+    s = b1 - b0
+    w = b0 - a0
+
+    def cross2(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        return x[:, 0] * y[:, 1] - x[:, 1] * y[:, 0]
+
+    denom = cross2(r, s)
+    numer_t = cross2(w, s)
+    numer_u = cross2(w, r)
+
+    eps = 1.0e-8
+    non_parallel = torch.abs(denom) > eps
+    t = torch.zeros_like(denom)
+    u = torch.zeros_like(denom)
+    t[non_parallel] = numer_t[non_parallel] / denom[non_parallel]
+    u[non_parallel] = numer_u[non_parallel] / denom[non_parallel]
+
+    return non_parallel & (t >= -eps) & (t <= 1.0 + eps) & (u >= -eps) & (u <= 1.0 + eps)
+
+
+def feet_capsule_overlap_penalty(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
     foot_length: float,
     foot_width: float,
     foot_center_offset_xy: tuple[float, float] = (0.0, 0.0),
     safety_margin: float = 0.0,
-    area_in_cm2: bool = True,
+    penetration_in_cm: bool = True,
 ) -> torch.Tensor:
-    """Penalty based on overlap area between two yaw-oriented foot rectangles on XY plane.
+    """Penalty based on overlap between two yaw-oriented foot capsules on XY plane.
 
-    The two feet are modeled as oriented rectangles centered at ankle links with an optional
-    local XY center offset and conservative size margin.
+    Each foot is modeled as a 2D capsule (stadium / runway shape):
+    - capsule radius = effective_width / 2
+    - center segment length = max(effective_length - effective_width, 0)
     """
     asset: Articulation = env.scene[asset_cfg.name]
     body_ids = asset_cfg.body_ids
     if isinstance(body_ids, slice) or len(body_ids) != 2:
-        raise ValueError("feet_rect_overlap_penalty expects exactly two body names in asset_cfg.body_names.")
+        raise ValueError("feet_capsule_overlap_penalty expects exactly two body names in asset_cfg.body_names.")
 
     feet_pos_w = asset.data.body_pos_w[:, body_ids, :2]  # [N, 2, 2]
     feet_quat_w = asset.data.body_quat_w[:, body_ids]  # [N, 2, 4]
@@ -188,49 +231,41 @@ def feet_rect_overlap_penalty(
     offset_local = torch.tensor(foot_center_offset_xy, device=feet_pos_w.device, dtype=feet_pos_w.dtype)
     feet_center_w = feet_pos_w + feet_x_axis_xy * offset_local[0] + feet_y_axis_xy * offset_local[1]
 
-    length_eff = foot_length + safety_margin
-    width_eff = foot_width + safety_margin
-    h_len = 0.5 * length_eff
-    h_wid = 0.5 * width_eff
+    length_eff = max(foot_length + safety_margin, 0.0)
+    width_eff = max(foot_width + safety_margin, 0.0)
+    radius = 0.5 * width_eff
+    seg_half = 0.5 * max(length_eff - width_eff, 0.0)
 
     c1 = feet_center_w[:, 0]
     c2 = feet_center_w[:, 1]
     u1 = feet_x_axis_xy[:, 0]
-    v1 = feet_y_axis_xy[:, 0]
     u2 = feet_x_axis_xy[:, 1]
-    v2 = feet_y_axis_xy[:, 1]
-    t = c2 - c1
 
-    # SAT overlap mask on 4 candidate axes (u1, v1, u2, v2).
-    axes = torch.stack((u1, v1, u2, v2), dim=1)  # [N, 4, 2]
-    abs_t = torch.abs(torch.sum(t[:, None, :] * axes, dim=-1))  # [N, 4]
-    r1 = h_len * torch.abs(torch.sum(u1[:, None, :] * axes, dim=-1)) + h_wid * torch.abs(
-        torch.sum(v1[:, None, :] * axes, dim=-1)
-    )
-    r2 = h_len * torch.abs(torch.sum(u2[:, None, :] * axes, dim=-1)) + h_wid * torch.abs(
-        torch.sum(v2[:, None, :] * axes, dim=-1)
-    )
-    overlap_mask = torch.all((r1 + r2 - abs_t) > 0.0, dim=1)
+    # Capsule center-line segment endpoints.
+    a0 = c1 - seg_half * u1
+    a1 = c1 + seg_half * u1
+    b0 = c2 - seg_half * u2
+    b1 = c2 + seg_half * u2
 
-    # Area proxy in foot-1 local axes.
-    overlap_u1 = (
-        h_len
-        + h_len * torch.abs(torch.sum(u2 * u1, dim=-1))
-        + h_wid * torch.abs(torch.sum(v2 * u1, dim=-1))
-        - torch.abs(torch.sum(t * u1, dim=-1))
+    # Segment-segment minimum distance in 2D via endpoint-to-segment distances + intersection test.
+    d2_candidates = torch.stack(
+        (
+            _point_to_segment_distance_sq_2d(a0, b0, b1),
+            _point_to_segment_distance_sq_2d(a1, b0, b1),
+            _point_to_segment_distance_sq_2d(b0, a0, a1),
+            _point_to_segment_distance_sq_2d(b1, a0, a1),
+        ),
+        dim=1,
     )
-    overlap_v1 = (
-        h_wid
-        + h_len * torch.abs(torch.sum(u2 * v1, dim=-1))
-        + h_wid * torch.abs(torch.sum(v2 * v1, dim=-1))
-        - torch.abs(torch.sum(t * v1, dim=-1))
-    )
-    overlap_area = torch.clamp(overlap_u1, min=0.0) * torch.clamp(overlap_v1, min=0.0)
-    overlap_area = overlap_area * overlap_mask
+    seg_dist_sq = torch.min(d2_candidates, dim=1).values
+    seg_dist = torch.sqrt(seg_dist_sq.clamp_min(0.0))
+    intersect_mask = _segments_intersect_2d(a0, a1, b0, b1)
+    seg_dist = torch.where(intersect_mask, torch.zeros_like(seg_dist), seg_dist)
 
-    if area_in_cm2:
-        overlap_area = overlap_area * 10000.0
-    return overlap_area * overlap_area
+    penetration = torch.clamp(2.0 * radius - seg_dist, min=0.0)
+    if penetration_in_cm:
+        penetration = penetration * 100.0
+    return penetration * penetration
 
 
 def cog_tracking_reward(

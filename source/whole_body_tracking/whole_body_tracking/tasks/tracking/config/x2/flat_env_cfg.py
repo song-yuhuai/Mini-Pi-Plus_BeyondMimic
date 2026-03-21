@@ -152,8 +152,8 @@ class X2BaseEnvCfg(TrackingEnvCfg):
                 "target": 0.0,
             },
         )
-        self.rewards.feet_rect_overlap = RewTerm(
-            func=mdp.feet_rect_overlap_penalty,
+        self.rewards.feet_capsule_overlap = RewTerm(
+            func=mdp.feet_capsule_overlap_penalty,
             weight=-0.1,
             params={
                 "asset_cfg": SceneEntityCfg(
@@ -163,8 +163,8 @@ class X2BaseEnvCfg(TrackingEnvCfg):
                 "foot_length": 0.22,
                 "foot_width": 0.130,
                 "foot_center_offset_xy": (0.037, 0.0),
-                "safety_margin": 0.02,
-                "area_in_cm2": True,
+                "safety_margin": 0.03,
+                "penetration_in_cm": True,
             },
         )
         self.rewards.cog_tracking = RewTerm(
