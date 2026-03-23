@@ -114,13 +114,15 @@ The X2 flat-ground config currently provides these task presets:
 
 - `Tracking-Flat-X2-v0`: base training task for standard flat-ground training.
 - `Tracking-Flat-X2-Robust-v0`: robust training task with reset randomization, COM/material randomization, push disturbances, and joint default offset randomization.
+- `Tracking-Flat-X2-Simple-Robust-v0`: conservative sim-to-real training task built on the base setup with light observation noise, mild COM / joint default perturbations, moderate contact friction randomization, and low-frequency push disturbances.
 - `Tracking-Flat-X2-Play-v0`: base play task with deterministic phase reset, no early-failure terminations, and no disturbances.
 - `Tracking-Flat-X2-Robust-Play-v0`: robust play task that keeps robust randomization/disturbance settings while also using deterministic phase reset and no early-failure terminations.
 
 Typical usage:
 
 - Train a normal policy with `Tracking-Flat-X2-v0`.
-- Train a robust policy with `Tracking-Flat-X2-Robust-v0`.
+- Train a conservative sim-to-real policy with `Tracking-Flat-X2-Simple-Robust-v0`.
+- Train a fully robust policy with `Tracking-Flat-X2-Robust-v0`.
 - Play or record a normal policy with `Tracking-Flat-X2-Play-v0`.
 - Play or stress-test a robust policy with `Tracking-Flat-X2-Robust-Play-v0`.
 
@@ -142,6 +144,9 @@ python scripts/offpolicy/train_fb_zero.py --task=Tracking-Flat-X2-v0 --motion_fi
 
 # Smaller-GPU profile
 python scripts/offpolicy/train_fb_zero.py --task=Tracking-Flat-X2-v0 --motion_file=source/motion/x2/npz/step_low_far.npz --headless --num_envs=256 --batch_size=512 --num_updates=8
+
+# Conservative sim-to-real profile
+python scripts/offpolicy/train_fb_zero.py --task=Tracking-Flat-X2-Simple-Robust-v0 --motion_file=source/motion/x2/npz/step_low_far.npz --headless
 
 # Robust profile
 python scripts/offpolicy/train_fb_zero.py --task=Tracking-Flat-X2-Robust-v0 --motion_file=source/motion/x2/npz/step_low_far.npz --headless
@@ -354,12 +359,14 @@ python scripts/replay_npz.py --robot pi_plus --motion_file source/motion/hightor
 
 ### X2 任务用法
 
-当前 X2 平地配置提供以下 4 个 task：
+当前 X2 平地配置提供以下 5 个 task：
 
 - `Tracking-Flat-X2-v0`
   - 基础训练任务，适合常规 flat-ground 训练。
 - `Tracking-Flat-X2-Robust-v0`
   - 鲁棒训练任务，包含 reset 随机化、质心随机化、接触材质随机化、push 扰动和关节默认偏置随机化。
+- `Tracking-Flat-X2-Simple-Robust-v0`
+  - 保守版 sim2real 训练任务，基于 base 配置，只加入轻量观测噪声、轻微质心与关节零位扰动、适度接触摩擦随机化和低频 push 扰动。
 - `Tracking-Flat-X2-Play-v0`
   - 基础回放任务，使用固定 phase reset，关闭提前终止和扰动，适合看动作效果、录视频和调试。
 - `Tracking-Flat-X2-Robust-Play-v0`
@@ -368,6 +375,7 @@ python scripts/replay_npz.py --robot pi_plus --motion_file source/motion/hightor
 推荐使用方式：
 
 - 训练普通策略：`Tracking-Flat-X2-v0`
+- 训练保守版 sim2real 策略：`Tracking-Flat-X2-Simple-Robust-v0`
 - 训练鲁棒策略：`Tracking-Flat-X2-Robust-v0`
 - 回放普通策略：`Tracking-Flat-X2-Play-v0`
 - 回放或压测鲁棒策略：`Tracking-Flat-X2-Robust-Play-v0`

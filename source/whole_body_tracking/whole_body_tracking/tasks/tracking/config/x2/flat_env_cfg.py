@@ -287,6 +287,77 @@ class X2RobustEnvCfg(X2BaseEnvCfg):
 
 
 @configclass
+class X2SimpleRobustEnvCfg(X2BaseEnvCfg):
+    """Flat-ground X2 tracking with light-weight sim-to-real randomization."""
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Keep the base setup intact and only add mild noise to the states that
+        # are likely to drift on hardware.
+        self.observations.policy.enable_corruption = True
+        self.observations.policy.motion_anchor_pos_b.noise = Unoise(n_min=-0.005, n_max=0.005)
+        self.observations.policy.base_ang_vel.noise = Unoise(n_min=-0.02, n_max=0.02)
+        self.observations.policy.joint_pos.noise = Unoise(n_min=-0.002, n_max=0.002)
+        self.observations.policy.joint_vel.noise = Unoise(n_min=-0.08, n_max=0.08)
+
+        # Keep contact variation centered near the default ground while still
+        # covering slightly slicker and slightly grippier surfaces.
+        self.events.physics_material = EventTerm(
+            func=mdp.randomize_rigid_body_material,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+                "static_friction_range": (0.6, 1.15),
+                "dynamic_friction_range": (0.5, 0.95),
+                "restitution_range": (0.0, 0.1),
+                "num_buckets": 64,
+            },
+        )
+        self.events.base_com = EventTerm(
+            func=mdp.randomize_rigid_body_com,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names="pelvis"),
+                "com_range": {"x": (-0.005, 0.005), "y": (-0.01, 0.01), "z": (-0.005, 0.005)},
+            },
+        )
+        self.events.add_joint_default_pos = EventTerm(
+            func=mdp.randomize_joint_default_pos,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
+                "pos_distribution_params": (-0.003, 0.003),
+                "operation": "add",
+            },
+        )
+        self.events.push_robot = EventTerm(
+            func=mdp.conditional_push_by_setting_velocity,
+            mode="interval",
+            interval_range_s=(3.0, 5.0),
+            params={
+                "velocity_range": {
+                    "x": (-0.05, 0.05),
+                    "y": (-0.05, 0.05),
+                    "z": (-0.02, 0.02),
+                    "roll": (-0.08, 0.08),
+                    "pitch": (-0.08, 0.08),
+                    "yaw": (-0.10, 0.10),
+                },
+                "condition_func": mdp.random_condition,
+                "condition_params": {"probability": 0.12},
+            },
+        )
+
+        # Leave command randomization, delay, and curriculum off so the training
+        # distribution stays close to the base run that already transfers well.
+        self.commands.motion.pose_range = {key: (0.0, 0.0) for key in self.commands.motion.pose_range}
+        self.commands.motion.velocity_range = {key: (0.0, 0.0) for key in self.commands.motion.velocity_range}
+        self.commands.motion.joint_position_range = (0.0, 0.0)
+        disable_x2_curriculum(self)
+
+
+@configclass
 class X2BasePlayEnvCfg(X2BaseEnvCfg):
     """Play-only X2 flat config with deterministic resets from the first motion frame."""
 
