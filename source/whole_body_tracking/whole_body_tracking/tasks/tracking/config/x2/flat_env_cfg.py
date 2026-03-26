@@ -336,10 +336,10 @@ class X2SimpleRobustEnvCfg(X2BaseEnvCfg):
         # Keep the base setup intact and only add mild noise to the states that
         # are likely to drift on hardware.
         self.observations.policy.enable_corruption = True
-        self.observations.policy.motion_anchor_pos_b.noise = Unoise(n_min=-0.005, n_max=0.005)
-        self.observations.policy.base_ang_vel.noise = Unoise(n_min=-0.02, n_max=0.02)
-        self.observations.policy.joint_pos.noise = Unoise(n_min=-0.002, n_max=0.002)
-        self.observations.policy.joint_vel.noise = Unoise(n_min=-0.08, n_max=0.08)
+        self.observations.policy.motion_anchor_pos_b.noise = Unoise(n_min=-0.002, n_max=0.002)
+        self.observations.policy.base_ang_vel.noise = Unoise(n_min=-0.01, n_max=0.01)
+        self.observations.policy.joint_pos.noise = Unoise(n_min=-0.001, n_max=0.001)
+        self.observations.policy.joint_vel.noise = Unoise(n_min=-0.04, n_max=0.04)
 
         # Keep contact variation centered near the default ground while still
         # covering slightly slicker and slightly grippier surfaces.
@@ -348,9 +348,9 @@ class X2SimpleRobustEnvCfg(X2BaseEnvCfg):
             mode="startup",
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-                "static_friction_range": (0.6, 1.15),
-                "dynamic_friction_range": (0.5, 0.95),
-                "restitution_range": (0.0, 0.1),
+                "static_friction_range": (0.3, 1.6),
+                "dynamic_friction_range": (0.3, 1.2),
+                "restitution_range": (0.0, 0.5),
                 "num_buckets": 64,
             },
         )
@@ -359,7 +359,7 @@ class X2SimpleRobustEnvCfg(X2BaseEnvCfg):
             mode="startup",
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names="pelvis"),
-                "com_range": {"x": (-0.005, 0.005), "y": (-0.01, 0.01), "z": (-0.005, 0.005)},
+                "com_range": {"x": (-0.002, 0.002), "y": (-0.002, 0.002), "z": (-0.002, 0.002)},
             },
         )
         self.events.add_joint_default_pos = EventTerm(
@@ -367,25 +367,23 @@ class X2SimpleRobustEnvCfg(X2BaseEnvCfg):
             mode="startup",
             params={
                 "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
-                "pos_distribution_params": (-0.003, 0.003),
+                "pos_distribution_params": (-0.001, 0.001),
                 "operation": "add",
             },
         )
         self.events.push_robot = EventTerm(
-            func=mdp.conditional_push_by_setting_velocity,
+            func=mdp.push_by_setting_velocity,
             mode="interval",
-            interval_range_s=(3.0, 5.0),
+            interval_range_s=(1.0, 3.0),
             params={
                 "velocity_range": {
-                    "x": (-0.05, 0.05),
-                    "y": (-0.05, 0.05),
-                    "z": (-0.02, 0.02),
-                    "roll": (-0.08, 0.08),
-                    "pitch": (-0.08, 0.08),
-                    "yaw": (-0.10, 0.10),
+                    "x": (-0.5, 0.5),
+                    "y": (-0.5, 0.5),
+                    "z": (-0.2, 0.2),
+                    "roll": (-0.52, 0.52),
+                    "pitch": (-0.52, 0.52),
+                    "yaw": (-0.78, 0.78),
                 },
-                "condition_func": mdp.random_condition,
-                "condition_params": {"probability": 0.12},
             },
         )
 
