@@ -125,9 +125,9 @@ class X2BaseEnvCfg(TrackingEnvCfg):
 
         self.rewards.motion_body_pos.weight = 1.6
         self.rewards.motion_body_pos.params["std"] = 0.12
-        self.rewards.action_rate_l2.weight = -0.18
+        self.rewards.action_rate_l2.weight = -0.20
         self.rewards.action_acc_l2.weight = -1e-2
-        self.rewards.joint_acc_l2.weight = -5e-3
+        self.rewards.joint_acc_l2.weight = -7e-3
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
             "contact_forces",
             body_names=[
@@ -154,7 +154,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         )
         self.rewards.feet_capsule_overlap = RewTerm(
             func=mdp.feet_capsule_overlap_penalty,
-            weight=-0.1,
+            weight=-0.05,
             params={
                 "asset_cfg": SceneEntityCfg(
                     "robot",
@@ -163,8 +163,22 @@ class X2BaseEnvCfg(TrackingEnvCfg):
                 "foot_length": 0.22,
                 "foot_width": 0.130,
                 "foot_center_offset_xy": (0.037, 0.0),
-                "safety_margin": 0.03,
+                "safety_margin": 0.04,
                 "penetration_in_cm": True,
+            },
+        )
+        self.rewards.feet_distance = RewTerm(
+            func=mdp.feet_distance_penalty,
+            weight=-80.0,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                ),
+                "soft_threshold": 0.18,
+                "hard_threshold": 0.16,
+                "hard_scale": 50.0,
+                "use_xy": True,
             },
         )
         self.rewards.cog_tracking = RewTerm(
@@ -174,6 +188,32 @@ class X2BaseEnvCfg(TrackingEnvCfg):
                 "asset_cfg": SceneEntityCfg("robot"),
                 "feet_body_names": ["left_ankle_roll_link", "right_ankle_roll_link"],
                 "sigma": 0.2,
+            },
+        )
+        self.rewards.feet_slide = RewTerm(
+            func=mdp.feet_slide_penalty,
+            weight=-0.08,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    "contact_forces",
+                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                ),
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                ),
+                "contact_threshold": 10.0,
+                "speed_deadband": 0.05,
+            },
+        )
+        self.rewards.feet_contact_switch = RewTerm(
+            func=mdp.feet_contact_switch_penalty,
+            weight=-0.02,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    "contact_forces",
+                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                ),
             },
         )
 

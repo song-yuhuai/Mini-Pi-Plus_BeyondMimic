@@ -83,6 +83,80 @@ def feet_contact_time(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, thresh
     return reward
 
 
+def feet_slide_penalty(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    contact_threshold: float = 10.0,
+    speed_deadband: float = 0.05,
+) -> torch.Tensor:
+    """Penalize horizontal foot motion while the corresponding foot is in contact."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    contacts = (
+        contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1).max(dim=1)[0]
+        > contact_threshold
+    )
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    body_vel_xy = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :2].norm(dim=-1)
+    sliding_speed = torch.clamp(body_vel_xy - speed_deadband, min=0.0)
+    return torch.sum(sliding_speed * contacts, dim=1)
+
+
+def feet_contact_switch_penalty(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Penalize frequent contact-state toggles to reduce chattering and tiny shuffle steps."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    in_contact = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids] > 0.0
+
+    prev_attr = f"_contact_switch_prev_{sensor_cfg.name}"
+    ep_len_attr = f"_contact_switch_prev_ep_len_{sensor_cfg.name}"
+
+    if not hasattr(env, prev_attr):
+        setattr(env, prev_attr, torch.zeros_like(in_contact, dtype=torch.bool))
+    if not hasattr(env, ep_len_attr):
+        setattr(env, ep_len_attr, torch.zeros_like(env.episode_length_buf))
+
+    prev_contact = getattr(env, prev_attr)
+    prev_ep_len = getattr(env, ep_len_attr)
+
+    reset_envs = env.episode_length_buf <= prev_ep_len
+    if torch.any(reset_envs):
+        prev_contact[reset_envs] = in_contact[reset_envs]
+
+    switches = (in_contact ^ prev_contact).float().sum(dim=1)
+
+    prev_contact.copy_(in_contact)
+    prev_ep_len.copy_(env.episode_length_buf)
+    return switches
+
+
+def feet_distance_penalty(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    soft_threshold: float = 0.18,
+    hard_threshold: float = 0.16,
+    hard_scale: float = 8.0,
+    use_xy: bool = True,
+) -> torch.Tensor:
+    """Penalize feet getting too close, with a sharper increase below the hard threshold."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    body_pos = asset.data.body_pos_w[:, asset_cfg.body_ids]
+    if body_pos.shape[1] != 2:
+        raise ValueError("feet_distance_penalty expects exactly two body names in asset_cfg.body_names.")
+
+    pos_dim = 2 if use_xy else 3
+    feet_delta = body_pos[:, 0, :pos_dim] - body_pos[:, 1, :pos_dim]
+    feet_distance = torch.norm(feet_delta, dim=-1)
+
+    soft_gap = torch.clamp(soft_threshold - feet_distance, min=0.0)
+    hard_gap = torch.clamp(hard_threshold - feet_distance, min=0.0)
+
+    return soft_gap.square() + hard_scale * hard_gap.square()
+
+
 def joint_pos_target_l1(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
