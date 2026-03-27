@@ -141,22 +141,22 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     print(f"[INFO] Resolved checkpoint: {resume_path}")
     print(f"[INFO] Motion file: {env_cfg.commands.motion.motion_file}")
 
-    # Align command joint ordering with checkpoint-exported metadata when available.
-    # This avoids NPZ/robot index drift across code versions.
-    deploy_yaml_path = os.path.join(os.path.dirname(resume_path), "params", "deploy.yaml")
-    if os.path.isfile(deploy_yaml_path):
+    # Align command joint ordering with the training-time env config when available.
+    # This avoids replay issues when code-side joint ordering changed after training.
+    env_yaml_path = os.path.join(os.path.dirname(resume_path), "params", "env.yaml")
+    if os.path.isfile(env_yaml_path):
         try:
-            with open(deploy_yaml_path, "r", encoding="utf-8") as f:
-                deploy_cfg = yaml.safe_load(f) or {}
-            deploy_joint_names = deploy_cfg.get("joint_names", None)
-            if isinstance(deploy_joint_names, list) and len(deploy_joint_names) > 0:
-                env_cfg.commands.motion.joint_names = deploy_joint_names
+            with open(env_yaml_path, "r", encoding="utf-8") as f:
+                saved_env_cfg = yaml.load(f, Loader=yaml.UnsafeLoader) or {}
+            saved_joint_names = (((saved_env_cfg.get("commands") or {}).get("motion") or {}).get("joint_names"))
+            if isinstance(saved_joint_names, list) and len(saved_joint_names) > 0:
+                env_cfg.commands.motion.joint_names = saved_joint_names
                 print(
-                    f"[INFO] Overriding motion joint_names from deploy.yaml ({len(deploy_joint_names)} joints): "
-                    f"{deploy_yaml_path}"
+                    f"[INFO] Overriding motion joint_names from env.yaml ({len(saved_joint_names)} joints): "
+                    f"{env_yaml_path}"
                 )
         except Exception as err:
-            print(f"[WARN] Failed to load joint_names from deploy.yaml: {err}")
+            print(f"[WARN] Failed to load joint_names from env.yaml: {err}")
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
