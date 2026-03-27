@@ -14,6 +14,22 @@ from whole_body_tracking.tasks.tracking.config.x2.curriculum_cfg import (
 from whole_body_tracking.tasks.tracking.tracking_env_cfg import TrackingEnvCfg
 
 
+X2_BODY_VEL_TRACKING_BODY_NAMES = [
+    "pelvis",
+    "left_hip_roll_link",
+    "left_knee_link",
+    "left_ankle_roll_link",
+    "right_hip_roll_link",
+    "right_knee_link",
+    "right_ankle_roll_link",
+    "waist_yaw_link",
+    "left_shoulder_roll_link",
+    "left_elbow_link",
+    "right_shoulder_roll_link",
+    "right_elbow_link",
+]
+
+
 @configclass
 class X2BaseEnvCfg(TrackingEnvCfg):
     """Flat-ground X2 tracking baseline."""
@@ -125,9 +141,11 @@ class X2BaseEnvCfg(TrackingEnvCfg):
 
         self.rewards.motion_body_pos.weight = 1.6
         self.rewards.motion_body_pos.params["std"] = 0.12
-        self.rewards.action_rate_l2.weight = -0.20
+        self.rewards.motion_body_lin_vel.params["body_names"] = X2_BODY_VEL_TRACKING_BODY_NAMES
+        self.rewards.motion_body_ang_vel.params["body_names"] = X2_BODY_VEL_TRACKING_BODY_NAMES
+        self.rewards.action_rate_l2.weight = -0.1
         self.rewards.action_acc_l2.weight = -1e-2
-        self.rewards.joint_acc_l2.weight = -7e-3
+        self.rewards.joint_acc_l2.weight = -2e-3
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
             "contact_forces",
             body_names=[
@@ -154,7 +172,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         )
         self.rewards.feet_capsule_overlap = RewTerm(
             func=mdp.feet_capsule_overlap_penalty,
-            weight=-0.05,
+            weight=-0.5,
             params={
                 "asset_cfg": SceneEntityCfg(
                     "robot",
@@ -163,24 +181,24 @@ class X2BaseEnvCfg(TrackingEnvCfg):
                 "foot_length": 0.22,
                 "foot_width": 0.130,
                 "foot_center_offset_xy": (0.037, 0.0),
-                "safety_margin": 0.04,
+                "safety_margin": 0.03,
                 "penetration_in_cm": True,
             },
         )
-        self.rewards.feet_distance = RewTerm(
-            func=mdp.feet_distance_penalty,
-            weight=-80.0,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot",
-                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
-                ),
-                "soft_threshold": 0.18,
-                "hard_threshold": 0.16,
-                "hard_scale": 50.0,
-                "use_xy": True,
-            },
-        )
+        # self.rewards.feet_distance = RewTerm(
+        #     func=mdp.feet_distance_penalty,
+        #     weight=-80.0,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg(
+        #             "robot",
+        #             body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+        #         ),
+        #         "soft_threshold": 0.18,
+        #         "hard_threshold": 0.16,
+        #         "hard_scale": 50.0,
+        #         "use_xy": True,
+        #     },
+        # )
         self.rewards.cog_tracking = RewTerm(
             func=mdp.cog_tracking_reward,
             weight=0.25,
