@@ -372,11 +372,22 @@ class RewardsCfg:
         weight=0.0
     )  # 动作二阶差分L2惩罚，抑制甩动和急加急减
 
+    action_jerk_l2 = RewTerm(
+        func=mdp.action_jerk_l2,
+        weight=0.0
+    )  # 动作三阶差分L2惩罚，进一步抑制突发抖动和高频控制折返
+
     joint_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2,
         weight=0.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )  # 关节加速度L2惩罚，抑制关节急加急减
+
+    joint_jerk_l2 = RewTerm(
+        func=mdp.joint_jerk_l2,
+        weight=0.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )  # 关节jerk L2惩罚，约束物理状态的高频突变
     
     joint_limit = RewTerm(
         func=mdp.joint_pos_limits,

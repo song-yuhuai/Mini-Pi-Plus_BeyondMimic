@@ -143,9 +143,11 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         self.rewards.motion_body_pos.params["std"] = 0.12
         self.rewards.motion_body_lin_vel.params["body_names"] = X2_BODY_VEL_TRACKING_BODY_NAMES
         self.rewards.motion_body_ang_vel.params["body_names"] = X2_BODY_VEL_TRACKING_BODY_NAMES
-        self.rewards.action_rate_l2.weight = -0.1
+        self.rewards.action_rate_l2.weight = -0.15
         self.rewards.action_acc_l2.weight = -1e-2
-        self.rewards.joint_acc_l2.weight = -2e-3
+        self.rewards.action_jerk_l2.weight = -2e-3
+        self.rewards.joint_acc_l2.weight = -5e-3
+        self.rewards.joint_jerk_l2.weight = 0.0
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
             "contact_forces",
             body_names=[
@@ -210,7 +212,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         )
         self.rewards.feet_slide = RewTerm(
             func=mdp.feet_slide_penalty,
-            weight=-0.08,
+            weight=-0.12,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     "contact_forces",
@@ -226,7 +228,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         )
         self.rewards.feet_contact_switch = RewTerm(
             func=mdp.feet_contact_switch_penalty,
-            weight=-0.02,
+            weight=-0.04,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     "contact_forces",
@@ -335,8 +337,11 @@ class X2RobustEnvCfg(X2BaseEnvCfg):
             },
         )
 
-        self.rewards.action_rate_l2.weight = -0.18
-        self.rewards.joint_acc_l2.weight = -5e-3
+        self.rewards.action_rate_l2.weight = -0.24
+        self.rewards.action_acc_l2.weight = -3e-2
+        self.rewards.action_jerk_l2.weight = -1.5e-2
+        self.rewards.joint_acc_l2.weight = -7e-3
+        self.rewards.joint_jerk_l2.weight = -2e-3
         self.rewards.motion_body_lin_vel.weight = 0.8
         self.rewards.motion_body_ang_vel.weight = 0.8
         self.terminations.anchor_pos.params["threshold"] = 0.30

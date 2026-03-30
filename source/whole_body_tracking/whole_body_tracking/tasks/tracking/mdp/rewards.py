@@ -230,6 +230,61 @@ def joint_acc_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Ten
     return torch.sum(torch.square(joint_acc), dim=1)
 
 
+def action_jerk_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """L2 penalty on action third-order difference (discrete jerk)."""
+    action = env.action_manager.action
+    prev_action = env.action_manager.prev_action
+    action_rate = action - prev_action
+
+    if not hasattr(env, "_action_jerk_prev_rate"):
+        env._action_jerk_prev_rate = torch.zeros_like(action_rate)
+    if not hasattr(env, "_action_jerk_prev_acc"):
+        env._action_jerk_prev_acc = torch.zeros_like(action_rate)
+    if not hasattr(env, "_action_jerk_prev_ep_len"):
+        env._action_jerk_prev_ep_len = torch.zeros_like(env.episode_length_buf)
+
+    reset_envs = env.episode_length_buf <= env._action_jerk_prev_ep_len
+    if torch.any(reset_envs):
+        env._action_jerk_prev_rate[reset_envs] = 0.0
+        env._action_jerk_prev_acc[reset_envs] = 0.0
+
+    action_acc = action_rate - env._action_jerk_prev_rate
+    action_jerk = action_acc - env._action_jerk_prev_acc
+
+    env._action_jerk_prev_rate.copy_(action_rate.detach())
+    env._action_jerk_prev_acc.copy_(action_acc.detach())
+    env._action_jerk_prev_ep_len.copy_(env.episode_length_buf)
+
+    return torch.sum(torch.square(action_jerk), dim=1)
+
+
+def joint_jerk_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """L2 penalty on joint jerk computed from joint acceleration differences."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    joint_vel = asset.data.joint_vel if asset_cfg.joint_ids == slice(None) else asset.data.joint_vel[:, asset_cfg.joint_ids]
+
+    if not hasattr(env, "_joint_jerk_prev_vel"):
+        env._joint_jerk_prev_vel = torch.zeros_like(joint_vel)
+    if not hasattr(env, "_joint_jerk_prev_acc"):
+        env._joint_jerk_prev_acc = torch.zeros_like(joint_vel)
+    if not hasattr(env, "_joint_jerk_prev_ep_len"):
+        env._joint_jerk_prev_ep_len = torch.zeros_like(env.episode_length_buf)
+
+    reset_envs = env.episode_length_buf <= env._joint_jerk_prev_ep_len
+    if torch.any(reset_envs):
+        env._joint_jerk_prev_vel[reset_envs] = joint_vel[reset_envs]
+        env._joint_jerk_prev_acc[reset_envs] = 0.0
+
+    joint_acc = joint_vel - env._joint_jerk_prev_vel
+    joint_jerk = joint_acc - env._joint_jerk_prev_acc
+
+    env._joint_jerk_prev_vel.copy_(joint_vel.detach())
+    env._joint_jerk_prev_acc.copy_(joint_acc.detach())
+    env._joint_jerk_prev_ep_len.copy_(env.episode_length_buf)
+
+    return torch.sum(torch.square(joint_jerk), dim=1)
+
+
 def _point_to_segment_distance_sq_2d(points: torch.Tensor, seg_a: torch.Tensor, seg_b: torch.Tensor) -> torch.Tensor:
     """Batched squared distance from 2D points to 2D segments.
 
