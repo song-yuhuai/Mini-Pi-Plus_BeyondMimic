@@ -178,6 +178,36 @@ def joint_pos_target_l1(
     return torch.sum(error, dim=-1)
 
 
+def motion_joint_position_error_exp_windowed(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    std: float,
+    last_n_steps: int = 100,
+    ramp: bool = True,
+) -> torch.Tensor:
+    """Track reference joint positions, emphasizing the terminal phase of the motion.
+
+    The reward is computed over all joints exposed by the motion command. It is
+    linearly ramped up over the final ``last_n_steps`` frames so the policy gets
+    stronger supervision near the clip end without a hard reward discontinuity.
+    """
+    command: MotionCommand = env.command_manager.get_term(command_name)
+    error = torch.square(command.joint_pos - command.robot_joint_pos)
+    reward = torch.exp(-error.mean(dim=-1) / std**2)
+
+    if last_n_steps <= 0:
+        return reward
+
+    window_start = max(command.phase_end_count - last_n_steps + 1, command.phase_start_count)
+    if ramp:
+        denom = max(command.phase_end_count - window_start + 1, 1)
+        phase_scale = (command.time_steps - window_start + 1).float() / float(denom)
+        phase_scale = torch.clamp(phase_scale, min=0.0, max=1.0)
+    else:
+        phase_scale = (command.time_steps >= window_start).float()
+    return reward * phase_scale
+
+
 def action_acc_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
     """L2 penalty on action second-order difference (discrete acceleration / jerk proxy).
 

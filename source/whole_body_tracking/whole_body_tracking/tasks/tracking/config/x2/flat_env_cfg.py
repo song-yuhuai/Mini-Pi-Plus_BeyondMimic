@@ -154,6 +154,16 @@ class X2BaseEnvCfg(TrackingEnvCfg):
                 r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_elbow_link$)(?!right_elbow_link$).+$"
             ],
         )
+        self.rewards.motion_joint_pos_terminal = RewTerm(
+            func=mdp.motion_joint_position_error_exp_windowed,
+            weight=0.8,
+            params={
+                "command_name": "motion",
+                "std": 0.35,
+                "last_n_steps": 100,
+                "ramp": True,
+            },
+        )
         self.rewards.joint_pos_target = RewTerm(
             func=mdp.joint_pos_target_l1,
             weight=-1.0,
