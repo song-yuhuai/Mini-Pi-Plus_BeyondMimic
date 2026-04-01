@@ -381,8 +381,8 @@ class X2SimpleRobustEnvCfg(X2BaseEnvCfg):
             mode="startup",
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-                "static_friction_range": (0.3, 1.6),
-                "dynamic_friction_range": (0.3, 1.2),
+                "static_friction_range": (0.5, 1.6),
+                "dynamic_friction_range": (0.5, 1.2),
                 "restitution_range": (0.0, 0.5),
                 "num_buckets": 64,
             },
@@ -420,6 +420,9 @@ class X2SimpleRobustEnvCfg(X2BaseEnvCfg):
             },
         )
 
+        self.actions.joint_pos.min_delay = 0
+        self.actions.joint_pos.max_delay = 2
+
         # Leave command randomization, delay, and curriculum off so the training
         # distribution stays close to the base run that already transfers well.
         self.commands.motion.pose_range = {key: (0.0, 0.0) for key in self.commands.motion.pose_range}
@@ -453,6 +456,9 @@ class X2RobustPlayEnvCfg(X2RobustEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        self.scene.terrain.physics_material.static_friction = 3.0
+        self.scene.terrain.physics_material.dynamic_friction = 3.0
+        self.sim.physics_material = self.scene.terrain.physics_material
         self.commands.motion.phase_start_count = 0
         self.commands.motion.phase_end_count = -1
         self.commands.motion.fixed_phase_reset = True

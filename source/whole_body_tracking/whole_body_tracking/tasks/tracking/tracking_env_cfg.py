@@ -138,7 +138,7 @@ class ActionsCfg:
     定义机器人的控制动作空间，这里使用关节位置控制。
     """
 
-    joint_pos = mdp.JointPositionActionCfg(
+    joint_pos = mdp.DelayedJointPositionActionCfg(
         asset_name="robot",           # 目标机器人资产
         joint_names=[".*"],          # 控制所有关节(正则表达式)
         use_default_offset=True      # 使用默认关节位置作为偏移
