@@ -182,29 +182,48 @@ def motion_joint_position_error_exp_windowed(
     env: ManagerBasedRLEnv,
     command_name: str,
     std: float,
+    first_n_steps: int = 0,
     last_n_steps: int = 100,
     ramp: bool = True,
 ) -> torch.Tensor:
-    """Track reference joint positions, emphasizing the terminal phase of the motion.
+    """Track reference joint positions, emphasizing the beginning/end of the motion.
 
     The reward is computed over all joints exposed by the motion command. It is
-    linearly ramped up over the final ``last_n_steps`` frames so the policy gets
-    stronger supervision near the clip end without a hard reward discontinuity.
+    applied within the first ``first_n_steps`` and last ``last_n_steps`` frames.
+    When ``ramp`` is enabled, the start window linearly decays away from the
+    clip start while the terminal window linearly ramps up toward the clip end.
     """
     command: MotionCommand = env.command_manager.get_term(command_name)
     error = torch.square(command.joint_pos - command.robot_joint_pos)
     reward = torch.exp(-error.mean(dim=-1) / std**2)
 
-    if last_n_steps <= 0:
+    if first_n_steps <= 0 and last_n_steps <= 0:
         return reward
 
-    window_start = max(command.phase_end_count - last_n_steps + 1, command.phase_start_count)
-    if ramp:
-        denom = max(command.phase_end_count - window_start + 1, 1)
-        phase_scale = (command.time_steps - window_start + 1).float() / float(denom)
-        phase_scale = torch.clamp(phase_scale, min=0.0, max=1.0)
-    else:
-        phase_scale = (command.time_steps >= window_start).float()
+    phase_scale = torch.zeros_like(reward)
+
+    if first_n_steps > 0:
+        start_window_end = min(command.phase_start_count + first_n_steps - 1, command.phase_end_count)
+        if ramp:
+            start_denom = max(start_window_end - command.phase_start_count + 1, 1)
+            start_scale = (start_window_end - command.time_steps + 1).float() / float(start_denom)
+            start_scale = torch.clamp(start_scale, min=0.0, max=1.0)
+        else:
+            start_scale = (
+                (command.time_steps >= command.phase_start_count) & (command.time_steps <= start_window_end)
+            ).float()
+        phase_scale = torch.maximum(phase_scale, start_scale)
+
+    if last_n_steps > 0:
+        window_start = max(command.phase_end_count - last_n_steps + 1, command.phase_start_count)
+        if ramp:
+            end_denom = max(command.phase_end_count - window_start + 1, 1)
+            end_scale = (command.time_steps - window_start + 1).float() / float(end_denom)
+            end_scale = torch.clamp(end_scale, min=0.0, max=1.0)
+        else:
+            end_scale = (command.time_steps >= window_start).float()
+        phase_scale = torch.maximum(phase_scale, end_scale)
+
     return reward * phase_scale
 
 
@@ -431,9 +450,16 @@ def cog_tracking_reward(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
     feet_body_names: tuple[str, str] | list[str],
+    sensor_cfg: SceneEntityCfg | None = None,
+    contact_threshold: float = 10.0,
     sigma: float = 0.2,
 ) -> torch.Tensor:
-    """Reward the XY projection of the center of gravity staying near the midpoint between the feet."""
+    """Reward the CoG XY projection staying near the active support point/segment.
+
+    When both feet are in contact, the target is the midpoint between the feet.
+    When only one foot is in contact, the target collapses to that stance foot.
+    When neither foot is confidently in contact, the midpoint fallback is used.
+    """
     asset: Articulation = env.scene[asset_cfg.name]
 
     if not hasattr(env, "_cog_tracking_body_masses"):
@@ -457,6 +483,21 @@ def cog_tracking_reward(
     if len(foot_body_ids) != 2:
         raise ValueError("cog_tracking_reward expects exactly two foot body names.")
 
-    feet_mid_xy = asset.data.body_pos_w[:, foot_body_ids, :2].mean(dim=1)
-    dist = torch.norm(cog_xy - feet_mid_xy, dim=1)
+    feet_xy = asset.data.body_pos_w[:, foot_body_ids, :2]
+    support_target_xy = feet_xy.mean(dim=1)
+
+    if sensor_cfg is not None:
+        contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+        contact_mask = (
+            contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1).max(dim=1)[0]
+            > contact_threshold
+        )
+
+        support_count = contact_mask.sum(dim=1, keepdim=True)
+        valid_support = support_count > 0
+        contact_weights = contact_mask.float() / support_count.clamp_min(1)
+        contact_target_xy = torch.sum(feet_xy * contact_weights.unsqueeze(-1), dim=1)
+        support_target_xy = torch.where(valid_support, contact_target_xy, support_target_xy)
+
+    dist = torch.norm(cog_xy - support_target_xy, dim=1)
     return torch.exp(-(dist**2) / (sigma**2))

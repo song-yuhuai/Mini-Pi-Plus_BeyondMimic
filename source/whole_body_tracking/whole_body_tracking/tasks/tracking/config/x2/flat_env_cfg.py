@@ -154,16 +154,17 @@ class X2BaseEnvCfg(TrackingEnvCfg):
                 r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_elbow_link$)(?!right_elbow_link$).+$"
             ],
         )
-        # self.rewards.motion_joint_pos_terminal = RewTerm(
-        #     func=mdp.motion_joint_position_error_exp_windowed,
-        #     weight=0.8,
-        #     params={
-        #         "command_name": "motion",
-        #         "std": 0.35,
-        #         "last_n_steps": 100,
-        #         "ramp": True,
-        #     },
-        # )
+        self.rewards.motion_joint_pos_terminal = RewTerm(
+            func=mdp.motion_joint_position_error_exp_windowed,
+            weight=2.5,
+            params={
+                "command_name": "motion",
+                "std": 0.35,
+                "first_n_steps": 100,
+                "last_n_steps": 100,
+                "ramp": True,
+            },
+        )
         self.rewards.joint_pos_target = RewTerm(
             func=mdp.joint_pos_target_l1,
             weight=-1.0,
@@ -197,26 +198,17 @@ class X2BaseEnvCfg(TrackingEnvCfg):
                 "penetration_in_cm": True,
             },
         )
-        # self.rewards.feet_distance = RewTerm(
-        #     func=mdp.feet_distance_penalty,
-        #     weight=-80.0,
-        #     params={
-        #         "asset_cfg": SceneEntityCfg(
-        #             "robot",
-        #             body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
-        #         ),
-        #         "soft_threshold": 0.18,
-        #         "hard_threshold": 0.16,
-        #         "hard_scale": 50.0,
-        #         "use_xy": True,
-        #     },
-        # )
         self.rewards.cog_tracking = RewTerm(
             func=mdp.cog_tracking_reward,
             weight=0.25,
             params={
                 "asset_cfg": SceneEntityCfg("robot"),
                 "feet_body_names": ["left_ankle_roll_link", "right_ankle_roll_link"],
+                "sensor_cfg": SceneEntityCfg(
+                    "contact_forces",
+                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                ),
+                "contact_threshold": 10.0,
                 "sigma": 0.2,
             },
         )
@@ -236,16 +228,16 @@ class X2BaseEnvCfg(TrackingEnvCfg):
                 "speed_deadband": 0.1,
             },
         )
-        self.rewards.feet_contact_switch = RewTerm(
-            func=mdp.feet_contact_switch_penalty,
-            weight=-0.04,
-            params={
-                "sensor_cfg": SceneEntityCfg(
-                    "contact_forces",
-                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
-                ),
-            },
-        )
+        # self.rewards.feet_contact_switch = RewTerm(
+        #     func=mdp.feet_contact_switch_penalty,
+        #     weight=-0.04,
+        #     params={
+        #         "sensor_cfg": SceneEntityCfg(
+        #             "contact_forces",
+        #             body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+        #         ),
+        #     },
+        # )
 
         self.terminations.ee_body_pos.params["body_names"] = [
             "left_ankle_roll_link",
