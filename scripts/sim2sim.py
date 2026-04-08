@@ -154,6 +154,11 @@ ROBOT_CONFIGS = {
         "num_obs": 151,
         "reference_body": "pelvis",
         "default_xml": None,
+        "landing_debug_body_names": ["left_ankle_roll_link", "right_ankle_roll_link"],
+        "landing_debug_floor_geom": "floor",
+        "landing_debug_enter_force_threshold": 150.0,
+        "landing_debug_exit_force_threshold": 20.0,
+        "landing_debug_min_air_frames": 20,
         "joint_names": [
             "left_hip_pitch_joint",
             "left_hip_roll_joint",
@@ -336,6 +341,54 @@ def quat_inv_np(q: np.ndarray, eps: float = 1e-9) -> np.ndarray:
 def pd_control(target_q, q, kp, target_dq, dq, kd):
     """Calculates torques from position commands"""
     return (target_q - q) * kp + (target_dq - dq) * kd
+
+
+def get_body_linear_velocity_z(model: mujoco.MjModel, data: mujoco.MjData, body_id: int) -> float:
+    """Return body linear velocity z in world frame."""
+    body_vel = np.zeros(6, dtype=np.float64)
+    mujoco.mj_objectVelocity(model, data, mujoco.mjtObj.mjOBJ_BODY, body_id, body_vel, 0)
+    # MuJoCo returns spatial velocity as [angular(3), linear(3)].
+    return float(body_vel[5])
+
+
+def build_body_geom_id_set(model: mujoco.MjModel, body_name: str) -> set[int]:
+    """Collect geom ids directly attached to a MuJoCo body."""
+    body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
+    if body_id == -1:
+        raise ValueError(f"Body {body_name} not found in model")
+
+    geom_adr = int(model.body_geomadr[body_id])
+    geom_num = int(model.body_geomnum[body_id])
+    return set(range(geom_adr, geom_adr + geom_num))
+
+
+def body_in_contact_with_geom(data: mujoco.MjData, body_geom_ids: set[int], target_geom_id: int) -> bool:
+    """Check whether any geom from a body is in contact with the target geom."""
+    for i in range(data.ncon):
+        contact = data.contact[i]
+        if (
+            (contact.geom1 in body_geom_ids and contact.geom2 == target_geom_id)
+            or (contact.geom2 in body_geom_ids and contact.geom1 == target_geom_id)
+        ):
+            return True
+    return False
+
+
+def body_contact_normal_force_with_geom(
+    model: mujoco.MjModel, data: mujoco.MjData, body_geom_ids: set[int], target_geom_id: int
+) -> float:
+    """Sum normal contact forces between a body's geoms and a target geom."""
+    total_normal_force = 0.0
+    contact_force = np.zeros(6, dtype=np.float64)
+    for i in range(data.ncon):
+        contact = data.contact[i]
+        if (
+            (contact.geom1 in body_geom_ids and contact.geom2 == target_geom_id)
+            or (contact.geom2 in body_geom_ids and contact.geom1 == target_geom_id)
+        ):
+            mujoco.mj_contactForce(model, data, i, contact_force)
+            total_normal_force += max(float(contact_force[0]), 0.0)
+    return total_normal_force
 
 def create_observation_hi_pi(obs, offset, motioninput, motion_ref_ori_b, omega, qpos_seq, qvel_seq, action_buffer, joint_pos_array_seq, num_actions):
     """Create observation for HI and PI Plus robots."""
@@ -608,6 +661,7 @@ def run_simulation(
     root_origin_xy = None
     forward_axis_w_xy = None
     left_axis_w_xy = None
+    landing_debug_states = {}
     has_announced_motion_end = False
     first_cycle_plot_saved = False
     if plot_root_xy and trajectory_frame == "root_initial":
@@ -616,6 +670,40 @@ def run_simulation(
             print("[INFO]: Left-right axis is flipped for plotting.")
     if loop and not use_external_motion and inferred_embedded_frames is None:
         print("[WARN]: --loop needs embedded motion length. Pass --embedded_motion_num_frames to enable it.")
+
+    landing_debug_body_names = config.get("landing_debug_body_names", [])
+    if landing_debug_body_names:
+        floor_geom_name = config.get("landing_debug_floor_geom", "floor")
+        landing_debug_enter_force_threshold = float(config.get("landing_debug_enter_force_threshold", 0.0))
+        landing_debug_exit_force_threshold = float(
+            config.get("landing_debug_exit_force_threshold", landing_debug_enter_force_threshold)
+        )
+        landing_debug_min_air_frames = int(config.get("landing_debug_min_air_frames", 0))
+        floor_geom_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, floor_geom_name)
+        if floor_geom_id == -1:
+            raise ValueError(f"Geom {floor_geom_name} not found in model")
+
+        for body_name in landing_debug_body_names:
+            body_id_dbg = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, body_name)
+            if body_id_dbg == -1:
+                raise ValueError(f"Landing debug body {body_name} not found in model")
+            landing_debug_states[body_name] = {
+                "body_id": body_id_dbg,
+                "geom_ids": build_body_geom_id_set(m, body_name),
+                "is_in_contact": False,
+                "air_frames": landing_debug_min_air_frames,
+                "pre_contact_vz_history": [],
+            }
+        print(
+            "[INFO]: Landing debug enabled for bodies: "
+            + ", ".join(landing_debug_body_names)
+            + (
+                f" (enter>{landing_debug_enter_force_threshold:.1f}N, "
+                f"exit<{landing_debug_exit_force_threshold:.1f}N, "
+                f"min_air_frames={landing_debug_min_air_frames}, "
+                "printing pre-touchdown 3 physics-frame z velocities)."
+            )
+        )
 
     try:
         with mujoco.viewer.launch_passive(m, d) as viewer:
@@ -629,6 +717,37 @@ def run_simulation(
 
                 d.ctrl[:] = tau
                 counter += 1
+                if landing_debug_states:
+                    for body_name, debug_state in landing_debug_states.items():
+                        current_vz = get_body_linear_velocity_z(m, d, debug_state["body_id"])
+                        vz_history = debug_state["pre_contact_vz_history"]
+                        vz_history.append(current_vz)
+                        if len(vz_history) > 3:
+                            vz_history.pop(0)
+
+                        normal_force = body_contact_normal_force_with_geom(m, d, debug_state["geom_ids"], floor_geom_id)
+                        was_in_contact = debug_state["is_in_contact"]
+                        if was_in_contact:
+                            is_in_contact = normal_force > landing_debug_exit_force_threshold
+                        else:
+                            is_in_contact = normal_force > landing_debug_enter_force_threshold
+
+                        if is_in_contact:
+                            touchdown = (not was_in_contact) and (debug_state["air_frames"] >= landing_debug_min_air_frames)
+                            debug_state["air_frames"] = 0
+                        else:
+                            touchdown = False
+                            debug_state["air_frames"] += 1
+
+                        if touchdown:
+                            vz_values = ", ".join(f"{vz:+.4f}" for vz in vz_history)
+                            print(
+                                f"[LANDING] step={counter:06d} body={body_name} "
+                                f"touchdown_force={normal_force:.2f}N "
+                                f"pre_touchdown_vz=[{vz_values}]"
+                            )
+
+                        debug_state["is_in_contact"] = is_in_contact
                 if plot_root_xy:
                     pos_xy = np.array([float(d.qpos[0]), float(d.qpos[1])], dtype=np.float64)
                     if trajectory_frame == "root_initial":

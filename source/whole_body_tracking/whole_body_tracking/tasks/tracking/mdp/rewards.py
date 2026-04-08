@@ -103,6 +103,112 @@ def feet_slide_penalty(
     return torch.sum(sliding_speed * contacts, dim=1)
 
 
+def feet_landing_impact_penalty(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    force_threshold: float = 400.0,
+    landing_window: float = 0.08,
+    use_squared_penalty: bool = True,
+) -> torch.Tensor:
+    """Penalize overly hard foot landings during the first moments of contact.
+
+    The term only activates shortly after touchdown so sustained stance support
+    does not get punished like an impact spike.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+
+    current_contact_time = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids]
+    recent_contact = (current_contact_time > 0.0) & (current_contact_time <= landing_window)
+
+    force_z_history = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, 2]
+    peak_force_z = torch.clamp(force_z_history.max(dim=1).values, min=0.0)
+
+    excess_force = torch.clamp(peak_force_z - force_threshold, min=0.0)
+    if use_squared_penalty:
+        excess_force = excess_force.square()
+
+    return torch.sum(excess_force * recent_contact.float(), dim=1)
+
+
+def feet_landing_speed_penalty(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    speed_threshold: float = 0.2,
+    pre_contact_frames: int = 3,
+    enter_force_threshold: float = 100.0,
+    exit_force_threshold: float = 20.0,
+    min_air_steps: int = 3,
+    use_squared_penalty: bool = True,
+) -> torch.Tensor:
+    """Penalize excessive downward foot speed using the frames right before touchdown.
+
+    Touchdown detection mirrors the sim2sim debug logic:
+    enter with a high force threshold, exit with a lower threshold, and require
+    a minimum number of air steps before a new touchdown can be registered.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    foot_vel_z = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, 2]
+    current_force_z = torch.clamp(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2], min=0.0)
+
+    history_len = max(int(pre_contact_frames), 1)
+    vel_hist_attr = f"_landing_speed_vel_hist_{sensor_cfg.name}"
+    contact_state_attr = f"_landing_speed_contact_state_{sensor_cfg.name}"
+    air_steps_attr = f"_landing_speed_air_steps_{sensor_cfg.name}"
+    ep_len_attr = f"_landing_speed_prev_ep_len_{sensor_cfg.name}"
+
+    if not hasattr(env, vel_hist_attr):
+        setattr(env, vel_hist_attr, [torch.zeros_like(foot_vel_z) for _ in range(history_len)])
+    if not hasattr(env, contact_state_attr):
+        setattr(env, contact_state_attr, torch.zeros_like(current_force_z, dtype=torch.bool))
+    if not hasattr(env, air_steps_attr):
+        setattr(
+            env,
+            air_steps_attr,
+            torch.full_like(current_force_z, fill_value=max(int(min_air_steps), 0), dtype=torch.long),
+        )
+    if not hasattr(env, ep_len_attr):
+        setattr(env, ep_len_attr, torch.zeros_like(env.episode_length_buf))
+
+    vel_hist = getattr(env, vel_hist_attr)
+    was_in_contact = getattr(env, contact_state_attr)
+    air_steps = getattr(env, air_steps_attr)
+    prev_ep_len = getattr(env, ep_len_attr)
+
+    if len(vel_hist) != history_len:
+        vel_hist = [torch.zeros_like(foot_vel_z) for _ in range(history_len)]
+        setattr(env, vel_hist_attr, vel_hist)
+
+    reset_envs = env.episode_length_buf <= prev_ep_len
+    if torch.any(reset_envs):
+        for hist in vel_hist:
+            hist[reset_envs] = foot_vel_z[reset_envs]
+        was_in_contact[reset_envs] = False
+        air_steps[reset_envs] = max(int(min_air_steps), 0)
+
+    is_in_contact = torch.where(
+        was_in_contact,
+        current_force_z > exit_force_threshold,
+        current_force_z > enter_force_threshold,
+    )
+    touchdown = (~was_in_contact) & is_in_contact & (air_steps >= max(int(min_air_steps), 0))
+
+    pre_contact_downward_speed = torch.stack([-hist for hist in vel_hist], dim=0).amax(dim=0)
+    excess_downward_speed = torch.clamp(pre_contact_downward_speed - speed_threshold, min=0.0)
+    if use_squared_penalty:
+        excess_downward_speed = excess_downward_speed.square()
+
+    vel_hist.pop(0)
+    vel_hist.append(foot_vel_z.detach().clone())
+    air_steps.copy_(torch.where(is_in_contact, torch.zeros_like(air_steps), air_steps + 1))
+    was_in_contact.copy_(is_in_contact)
+    prev_ep_len.copy_(env.episode_length_buf)
+
+    return torch.sum(excess_downward_speed * touchdown.float(), dim=1)
+
+
 def feet_contact_switch_penalty(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,

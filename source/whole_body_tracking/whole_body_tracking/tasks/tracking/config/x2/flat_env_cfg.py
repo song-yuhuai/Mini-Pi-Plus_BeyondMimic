@@ -143,10 +143,10 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         self.rewards.motion_body_pos.params["std"] = 0.12
         self.rewards.motion_body_lin_vel.params["body_names"] = X2_BODY_VEL_TRACKING_BODY_NAMES
         self.rewards.motion_body_ang_vel.params["body_names"] = X2_BODY_VEL_TRACKING_BODY_NAMES
-        self.rewards.action_rate_l2.weight = -0.15
+        self.rewards.action_rate_l2.weight = -0.30
         self.rewards.action_acc_l2.weight = -1e-2
         self.rewards.action_jerk_l2.weight = -2e-3
-        self.rewards.joint_acc_l2.weight = -5e-3
+        self.rewards.joint_acc_l2.weight = -2e-3
         self.rewards.joint_jerk_l2.weight = 0.0
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
             "contact_forces",
@@ -160,7 +160,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
             params={
                 "command_name": "motion",
                 "std": 0.35,
-                "first_n_steps": 100,
+                "first_n_steps": 25,
                 "last_n_steps": 100,
                 "ramp": True,
             },
@@ -200,7 +200,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         )
         self.rewards.cog_tracking = RewTerm(
             func=mdp.cog_tracking_reward,
-            weight=0.25,
+            weight=0.75,
             params={
                 "asset_cfg": SceneEntityCfg("robot"),
                 "feet_body_names": ["left_ankle_roll_link", "right_ankle_roll_link"],
@@ -214,7 +214,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         )
         self.rewards.feet_slide = RewTerm(
             func=mdp.feet_slide_penalty,
-            weight=-0.06,
+            weight=-0.5,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     "contact_forces",
@@ -226,6 +226,39 @@ class X2BaseEnvCfg(TrackingEnvCfg):
                 ),
                 "contact_threshold": 10.0,
                 "speed_deadband": 0.1,
+            },
+        )
+        self.rewards.feet_landing_impact = RewTerm(
+            func=mdp.feet_landing_impact_penalty,
+            weight=-2.0e-5,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    "contact_forces",
+                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                ),
+                "force_threshold": 600.0,
+                "landing_window": 0.08,
+                "use_squared_penalty": True,
+            },
+        )
+        self.rewards.feet_landing_speed = RewTerm(
+            func=mdp.feet_landing_speed_penalty,
+            weight=-0.5,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    "contact_forces",
+                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                ),
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                ),
+                "speed_threshold": 1.5,
+                "pre_contact_frames": 3,
+                "enter_force_threshold": 100.0,
+                "exit_force_threshold": 20.0,
+                "min_air_steps": 3,
+                "use_squared_penalty": True,
             },
         )
         # self.rewards.feet_contact_switch = RewTerm(
