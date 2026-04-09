@@ -29,6 +29,13 @@ X2_BODY_VEL_TRACKING_BODY_NAMES = [
     "right_elbow_link",
 ]
 
+X2_HAND_FOOT_TRACKING_BODY_NAMES = [
+    "left_ankle_roll_link",
+    "right_ankle_roll_link",
+    "left_wrist_yaw_link",
+    "right_wrist_yaw_link",
+]
+
 
 @configclass
 class X2BaseEnvCfg(TrackingEnvCfg):
@@ -141,6 +148,15 @@ class X2BaseEnvCfg(TrackingEnvCfg):
 
         self.rewards.motion_body_pos.weight = 1.6
         self.rewards.motion_body_pos.params["std"] = 0.12
+        self.rewards.motion_hands_feet_pos = RewTerm(
+            func=mdp.motion_relative_body_position_error_exp,
+            weight=0.8,
+            params={
+                "command_name": "motion",
+                "std": 0.08,
+                "body_names": X2_HAND_FOOT_TRACKING_BODY_NAMES,
+            },
+        )
         self.rewards.motion_body_lin_vel.params["body_names"] = X2_BODY_VEL_TRACKING_BODY_NAMES
         self.rewards.motion_body_ang_vel.params["body_names"] = X2_BODY_VEL_TRACKING_BODY_NAMES
         self.rewards.action_rate_l2.weight = -0.30
@@ -214,7 +230,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         )
         self.rewards.feet_slide = RewTerm(
             func=mdp.feet_slide_penalty,
-            weight=-0.5,
+            weight=-0.05,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     "contact_forces",
