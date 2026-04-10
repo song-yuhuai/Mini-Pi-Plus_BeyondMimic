@@ -580,36 +580,38 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene, rob
             np.savez(output_file, **log)
             print(f"[INFO]: Motion saved locally to: {output_file}")
 
-            # WandB upload logic
-            use_wandb = (not args_cli.no_wandb) and (
-                os.environ.get("WANDB_DISABLED", "").lower() not in ["1", "true", "yes"]
-            )
-            
-            if use_wandb:
-                wandb_temp_file = os.path.join(args_cli.save_to, "motion.npz")
-                np.savez(wandb_temp_file, **log)
-                
-                import wandb
-                from wandb.errors import CommError
+            # WandB upload logic is kept here for future use, but temporarily disabled.
+            # use_wandb = (not args_cli.no_wandb) and (
+            #     os.environ.get("WANDB_DISABLED", "").lower() not in ["1", "true", "yes"]
+            # )
+            #
+            # if use_wandb:
+            #     wandb_temp_file = os.path.join(args_cli.save_to, "motion.npz")
+            #     np.savez(wandb_temp_file, **log)
+            #
+            #     import wandb
+            #     from wandb.errors import CommError
+            #
+            #     # Extract just the filename without path and extension for artifact name
+            #     COLLECTION = os.path.splitext(os.path.basename(args_cli.output_name))[0]
+            #     run = wandb.init(project="csv_to_npz", name=COLLECTION)
+            #     print(f"[INFO]: Logging motion to wandb: {COLLECTION}")
+            #     REGISTRY = "motions"
+            #     logged_artifact = run.log_artifact(artifact_or_path=wandb_temp_file, name=COLLECTION, type=REGISTRY)
+            #     try:
+            #         run.link_artifact(artifact=logged_artifact, target_path=f"wandb-registry-{REGISTRY}/{COLLECTION}")
+            #         print(f"[INFO]: Motion saved to wandb registry: {REGISTRY}/{COLLECTION}")
+            #     except CommError as exc:
+            #         print(
+            #             "[WARN]: Failed to link artifact to custom registry. "
+            #             f"Skipping registry link. Details: {exc}"
+            #         )
+            #     finally:
+            #         run.finish()
+            # else:
+            #     print("[INFO]: Skipped WandB upload (--no_wandb flag used)")
 
-                # Extract just the filename without path and extension for artifact name
-                COLLECTION = os.path.splitext(os.path.basename(args_cli.output_name))[0]
-                run = wandb.init(project="csv_to_npz", name=COLLECTION)
-                print(f"[INFO]: Logging motion to wandb: {COLLECTION}")
-                REGISTRY = "motions"
-                logged_artifact = run.log_artifact(artifact_or_path=wandb_temp_file, name=COLLECTION, type=REGISTRY)
-                try:
-                    run.link_artifact(artifact=logged_artifact, target_path=f"wandb-registry-{REGISTRY}/{COLLECTION}")
-                    print(f"[INFO]: Motion saved to wandb registry: {REGISTRY}/{COLLECTION}")
-                except CommError as exc:
-                    print(
-                        "[WARN]: Failed to link artifact to custom registry. "
-                        f"Skipping registry link. Details: {exc}"
-                    )
-                finally:
-                    run.finish()
-            else:
-                print("[INFO]: Skipped WandB upload (--no_wandb flag used)")
+            return
 
 
 def main():
