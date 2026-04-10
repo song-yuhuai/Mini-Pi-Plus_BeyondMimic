@@ -29,11 +29,9 @@ X2_BODY_VEL_TRACKING_BODY_NAMES = [
     "right_elbow_link",
 ]
 
-X2_HAND_FOOT_TRACKING_BODY_NAMES = [
+X2_FEET_HEIGHT_TRACKING_BODY_NAMES = [
     "left_ankle_roll_link",
     "right_ankle_roll_link",
-    "left_wrist_yaw_link",
-    "right_wrist_yaw_link",
 ]
 
 
@@ -148,21 +146,22 @@ class X2BaseEnvCfg(TrackingEnvCfg):
 
         self.rewards.motion_body_pos.weight = 1.6
         self.rewards.motion_body_pos.params["std"] = 0.12
-        self.rewards.motion_hands_feet_pos = RewTerm(
-            func=mdp.motion_relative_body_position_error_exp,
-            weight=0.8,
+        self.rewards.motion_feet_height = RewTerm(
+            func=mdp.motion_feet_height_error_exp,
+            weight=1.2,
             params={
                 "command_name": "motion",
-                "std": 0.08,
-                "body_names": X2_HAND_FOOT_TRACKING_BODY_NAMES,
+                "std": 0.05,
+                "body_names": X2_FEET_HEIGHT_TRACKING_BODY_NAMES,
+                "lift_activation_height": 0.03,
             },
         )
         self.rewards.motion_body_lin_vel.params["body_names"] = X2_BODY_VEL_TRACKING_BODY_NAMES
         self.rewards.motion_body_ang_vel.params["body_names"] = X2_BODY_VEL_TRACKING_BODY_NAMES
         self.rewards.action_rate_l2.weight = -0.30
-        self.rewards.action_acc_l2.weight = -1e-2
-        self.rewards.action_jerk_l2.weight = -2e-3
-        self.rewards.joint_acc_l2.weight = -2e-3
+        self.rewards.action_acc_l2.weight = 0
+        self.rewards.action_jerk_l2.weight = -1e-4
+        self.rewards.joint_acc_l2.weight = -1e-3
         self.rewards.joint_jerk_l2.weight = 0.0
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
             "contact_forces",
@@ -216,7 +215,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         )
         self.rewards.cog_tracking = RewTerm(
             func=mdp.cog_tracking_reward,
-            weight=0.75,
+            weight=0.5,
             params={
                 "asset_cfg": SceneEntityCfg("robot"),
                 "feet_body_names": ["left_ankle_roll_link", "right_ankle_roll_link"],
@@ -230,7 +229,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         )
         self.rewards.feet_slide = RewTerm(
             func=mdp.feet_slide_penalty,
-            weight=-0.05,
+            weight=-0.1,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     "contact_forces",
@@ -244,22 +243,22 @@ class X2BaseEnvCfg(TrackingEnvCfg):
                 "speed_deadband": 0.1,
             },
         )
-        self.rewards.feet_landing_impact = RewTerm(
-            func=mdp.feet_landing_impact_penalty,
-            weight=-2.0e-5,
-            params={
-                "sensor_cfg": SceneEntityCfg(
-                    "contact_forces",
-                    body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
-                ),
-                "force_threshold": 600.0,
-                "landing_window": 0.08,
-                "use_squared_penalty": True,
-            },
-        )
+        # self.rewards.feet_landing_impact = RewTerm(
+        #     func=mdp.feet_landing_impact_penalty,
+        #     weight=-2.0e-5,
+        #     params={
+        #         "sensor_cfg": SceneEntityCfg(
+        #             "contact_forces",
+        #             body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+        #         ),
+        #         "force_threshold": 600.0,
+        #         "landing_window": 0.08,
+        #         "use_squared_penalty": True,
+        #     },
+        # )
         self.rewards.feet_landing_speed = RewTerm(
             func=mdp.feet_landing_speed_penalty,
-            weight=-0.5,
+            weight=-0.3,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     "contact_forces",
@@ -269,7 +268,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
                     "robot",
                     body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
                 ),
-                "speed_threshold": 1.5,
+                "speed_threshold": 2.0,
                 "pre_contact_frames": 3,
                 "enter_force_threshold": 100.0,
                 "exit_force_threshold": 20.0,

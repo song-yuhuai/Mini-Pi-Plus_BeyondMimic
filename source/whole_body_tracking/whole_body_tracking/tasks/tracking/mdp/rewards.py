@@ -41,6 +41,41 @@ def motion_relative_body_position_error_exp(
     return torch.exp(-error.mean(-1) / std**2)
 
 
+def motion_feet_height_error_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    std: float,
+    body_names: list[str],
+    lift_activation_height: float,
+) -> torch.Tensor:
+    """Reward matching reference foot height only during reference swing.
+
+    Feet whose reference relative height does not exceed ``lift_activation_height``
+    are ignored for the current step. If no tracked feet are in swing, the term
+    returns 1.0 so stance phases are not additionally penalized.
+    """
+    command: MotionCommand = env.command_manager.get_term(command_name)
+    body_indexes = _get_body_indexes(command, body_names)
+    if len(body_indexes) == 0:
+        raise ValueError("motion_feet_height_error_exp requires at least one body name present in the motion command.")
+
+    reference_height = command.body_pos_relative_w[:, body_indexes, 2]
+    robot_height = command.robot_body_pos_w[:, body_indexes, 2]
+
+    active_mask = reference_height > lift_activation_height
+    height_error_sq = torch.square(reference_height - robot_height)
+
+    active_count = active_mask.sum(dim=1)
+    active_error = (height_error_sq * active_mask.float()).sum(dim=1)
+    mean_active_error = torch.where(
+        active_count > 0,
+        active_error / active_count.clamp_min(1).float(),
+        torch.zeros_like(active_error),
+    )
+    reward = torch.exp(-mean_active_error / std**2)
+    return torch.where(active_count > 0, reward, torch.ones_like(reward))
+
+
 def motion_relative_body_orientation_error_exp(
     env: ManagerBasedRLEnv, command_name: str, std: float, body_names: list[str] | None = None
 ) -> torch.Tensor:
