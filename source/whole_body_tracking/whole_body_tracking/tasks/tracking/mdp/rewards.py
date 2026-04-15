@@ -47,12 +47,14 @@ def motion_feet_height_error_exp(
     std: float,
     body_names: list[str],
     lift_activation_height: float,
+    deadzone: float = 0.0,
 ) -> torch.Tensor:
     """Reward matching reference foot height only during reference swing.
 
     Feet whose reference relative height does not exceed ``lift_activation_height``
     are ignored for the current step. If no tracked feet are in swing, the term
-    returns 1.0 so stance phases are not additionally penalized.
+    returns 1.0 so stance phases are not additionally penalized. A small
+    ``deadzone`` can be used to ignore minor height mismatches during swing.
     """
     command: MotionCommand = env.command_manager.get_term(command_name)
     body_indexes = _get_body_indexes(command, body_names)
@@ -63,7 +65,9 @@ def motion_feet_height_error_exp(
     robot_height = command.robot_body_pos_w[:, body_indexes, 2]
 
     active_mask = reference_height > lift_activation_height
-    height_error_sq = torch.square(reference_height - robot_height)
+    height_error = torch.abs(reference_height - robot_height)
+    height_error = torch.clamp(height_error - deadzone, min=0.0)
+    height_error_sq = torch.square(height_error)
 
     active_count = active_mask.sum(dim=1)
     active_error = (height_error_sq * active_mask.float()).sum(dim=1)

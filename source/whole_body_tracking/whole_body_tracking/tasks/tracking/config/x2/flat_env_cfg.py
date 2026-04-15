@@ -148,12 +148,13 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         self.rewards.motion_body_pos.params["std"] = 0.12
         self.rewards.motion_feet_height = RewTerm(
             func=mdp.motion_feet_height_error_exp,
-            weight=1.2,
+            weight=0.5,
             params={
                 "command_name": "motion",
                 "std": 0.05,
                 "body_names": X2_FEET_HEIGHT_TRACKING_BODY_NAMES,
                 "lift_activation_height": 0.03,
+                "deadzone": 0.03,
             },
         )
         self.rewards.motion_body_lin_vel.params["body_names"] = X2_BODY_VEL_TRACKING_BODY_NAMES
@@ -215,7 +216,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         )
         self.rewards.cog_tracking = RewTerm(
             func=mdp.cog_tracking_reward,
-            weight=0.5,
+            weight=0.75,
             params={
                 "asset_cfg": SceneEntityCfg("robot"),
                 "feet_body_names": ["left_ankle_roll_link", "right_ankle_roll_link"],
@@ -258,7 +259,7 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         # )
         self.rewards.feet_landing_speed = RewTerm(
             func=mdp.feet_landing_speed_penalty,
-            weight=-0.3,
+            weight=-0.5,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     "contact_forces",
