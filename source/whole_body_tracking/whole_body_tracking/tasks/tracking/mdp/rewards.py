@@ -77,7 +77,7 @@ def motion_feet_height_error_exp(
         torch.zeros_like(active_error),
     )
     reward = torch.exp(-mean_active_error / std**2)
-    return torch.where(active_count > 0, reward, torch.ones_like(reward))
+    return torch.where(active_count > 0, reward, torch.zeros_like(reward))
 
 
 def motion_relative_body_orientation_error_exp(

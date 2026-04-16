@@ -148,13 +148,13 @@ class X2BaseEnvCfg(TrackingEnvCfg):
         self.rewards.motion_body_pos.params["std"] = 0.12
         self.rewards.motion_feet_height = RewTerm(
             func=mdp.motion_feet_height_error_exp,
-            weight=0.5,
+            weight=1.5,
             params={
                 "command_name": "motion",
-                "std": 0.05,
+                "std": 0.02,
                 "body_names": X2_FEET_HEIGHT_TRACKING_BODY_NAMES,
-                "lift_activation_height": 0.03,
-                "deadzone": 0.03,
+                "lift_activation_height": 0.01,
+                "deadzone": 0.01,
             },
         )
         self.rewards.motion_body_lin_vel.params["body_names"] = X2_BODY_VEL_TRACKING_BODY_NAMES
