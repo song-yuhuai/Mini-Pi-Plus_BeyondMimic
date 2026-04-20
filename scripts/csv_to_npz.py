@@ -53,6 +53,11 @@ parser.add_argument(
     required=True,
     help="Robot type: g1 (Unitree G1), hi (Unitree Hi), pi_plus (PI Plus), gp02_v2, x2",
 )
+parser.add_argument(
+    "--with_chassis",
+    action="store_true",
+    help="Visualize the fixed X2-style chassis block in the replay scene.",
+)
 parser.add_argument("--no_wandb", action="store_true", help="Skip WandB upload and save NPZ locally only.")
 parser.add_argument("--save_to", type=str, default="/tmp/", help="Path to save the generated npz.")
 
@@ -86,6 +91,12 @@ from isaaclab.sim import SimulationContext
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.math import axis_angle_from_quat, quat_conjugate, quat_mul, quat_slerp
+from whole_body_tracking.tasks.tracking.config.x2.chassis_constants import (
+    X2_CHASSIS_COLOR,
+    X2_CHASSIS_POSITION,
+    X2_CHASSIS_PRIM_PATH,
+    X2_CHASSIS_SIZE,
+)
 
 # Robot config loader ---------------------------------------------------------
 def _build_cfg_loader(module_path: str, attr_name: str):
@@ -295,6 +306,7 @@ class ReplayMotionsSceneCfg(InteractiveSceneCfg):
 
     # articulation (will be set dynamically based on robot type)
     robot: ArticulationCfg = None
+    chassis_block: AssetBaseCfg = None
 
 
 class MotionLoader:
@@ -630,6 +642,24 @@ def main():
     # Design scene with robot-specific configuration
     scene_cfg = ReplayMotionsSceneCfg(num_envs=1, env_spacing=2.0)
     scene_cfg.robot = robot_config["cfg"].replace(prim_path="{ENV_REGEX_NS}/Robot")
+    if args_cli.with_chassis:
+        scene_cfg.chassis_block = AssetBaseCfg(
+            prim_path=X2_CHASSIS_PRIM_PATH,
+            init_state=AssetBaseCfg.InitialStateCfg(pos=X2_CHASSIS_POSITION),
+            spawn=sim_utils.CuboidCfg(
+                size=X2_CHASSIS_SIZE,
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+                collision_props=sim_utils.CollisionPropertiesCfg(),
+                physics_material=sim_utils.RigidBodyMaterialCfg(
+                    friction_combine_mode="multiply",
+                    restitution_combine_mode="multiply",
+                    static_friction=1.0,
+                    dynamic_friction=1.0,
+                    restitution=0.0,
+                ),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=X2_CHASSIS_COLOR),
+            ),
+        )
     scene = InteractiveScene(scene_cfg)
     
     # Play the simulator

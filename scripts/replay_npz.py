@@ -32,6 +32,11 @@ parser.add_argument("--robot", type=str, choices=["hi", "pi_plus", "gp02_v2", "x
                    help="Robot type: hi (Hi), pi_plus (PI Plus), gp02_v2, x2")
 parser.add_argument("--registry_name", type=str, help="The name of the wand registry.")
 parser.add_argument("--motion_file", type=str, help="Local motion NPZ file path")
+parser.add_argument(
+    "--with_chassis",
+    action="store_true",
+    help="Visualize the fixed X2-style chassis block in the replay scene.",
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -58,6 +63,12 @@ from whole_body_tracking.robots.hi import HI_CFG
 from whole_body_tracking.robots.pi_plus import PI_PLUS_CFG
 # from whole_body_tracking.robots.gp02_v2 import GP02_V2_CFG
 from whole_body_tracking.robots.x2 import X2_CFG
+from whole_body_tracking.tasks.tracking.config.x2.chassis_constants import (
+    X2_CHASSIS_COLOR,
+    X2_CHASSIS_POSITION,
+    X2_CHASSIS_PRIM_PATH,
+    X2_CHASSIS_SIZE,
+)
 from whole_body_tracking.tasks.tracking.mdp import MotionLoader
 
 # Robot configurations
@@ -97,6 +108,7 @@ class ReplayMotionsSceneCfg(InteractiveSceneCfg):
 
     # articulation (will be set dynamically based on robot type)
     robot: ArticulationCfg = None
+    chassis_block: AssetBaseCfg = None
 
 
 def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
@@ -173,6 +185,24 @@ def main():
     # Design scene with robot-specific configuration
     scene_cfg = ReplayMotionsSceneCfg(num_envs=1, env_spacing=2.0)
     scene_cfg.robot = robot_config["cfg"].replace(prim_path="{ENV_REGEX_NS}/Robot")
+    if args_cli.with_chassis:
+        scene_cfg.chassis_block = AssetBaseCfg(
+            prim_path=X2_CHASSIS_PRIM_PATH,
+            init_state=AssetBaseCfg.InitialStateCfg(pos=X2_CHASSIS_POSITION),
+            spawn=sim_utils.CuboidCfg(
+                size=X2_CHASSIS_SIZE,
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+                collision_props=sim_utils.CollisionPropertiesCfg(),
+                physics_material=sim_utils.RigidBodyMaterialCfg(
+                    friction_combine_mode="multiply",
+                    restitution_combine_mode="multiply",
+                    static_friction=1.0,
+                    dynamic_friction=1.0,
+                    restitution=0.0,
+                ),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=X2_CHASSIS_COLOR),
+            ),
+        )
     scene = InteractiveScene(scene_cfg)
     
     sim.reset()
